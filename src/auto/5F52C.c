@@ -96,6 +96,18 @@ Gfx *Font_DrawText(Gfx *gfx, Font *f, u8 *str, s16 x, s16 y, s16 maxPerLine) {
             GFX2(gfx, 0xF5181200 | ((f->fmt & 7) << 21), 0x00080200);
             GFX2(gfx, 0xF2000000, 0x00080080);
         }
+#ifdef TARGET_PC
+        if (f->siz == 2 || f->siz == 3) {
+            /* Load and clamp the glyph alone, not the 33x33 block from it: scaled
+               to a PC window a rectangle's last row of pixels can sample past the
+               glyph, and the block's next row is the top of the glyph below (a
+               line under the digits). Rewrites the LoadTile and SetTileSize above. */
+            u32 lrs = ((f->widths[i] - 1) * 4) & 0xFFF;
+            u32 lrt = ((f->height - 1) * 4) & 0xFFF;
+            gfx[-4].w1 = 0x07000000 | (lrs << 12) | lrt;
+            gfx[-1].w1 = (lrs << 12) | lrt;
+        }
+#endif
         GFX2(gfx, 0xE4000000 | ((((cx + f->widths[i]) * 4) & 0xFFF) << 12) | (((cy + f->height) * 4) & 0xFFF),
              (((cx * 4) & 0xFFF) << 12) | ((cy * 4) & 0xFFF));
         GFX2(gfx, 0xE1000000, 0);
