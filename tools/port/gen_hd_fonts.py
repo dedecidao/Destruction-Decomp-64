@@ -12,7 +12,7 @@ ORIG = sys.argv[1]          # fonts_original (PNGs + txt; txt with codes preferr
 CODES = sys.argv[2]         # a fonts_original with the newer txt (index code char x y w)
 OUT = sys.argv[3]
 S = 4
-WIN = '/mnt/c/Windows/Fonts/'
+WIN = os.environ.get('FONTS_DIR', '/mnt/c/Windows/Fonts/')  # Windows' fonts, seen from WSL
 TEXT_FONT, NUM_FONT = WIN + 'tahomabd.ttf', WIN + 'impact.ttf'
 NUMERIC = {'231fc1c11fcbe347', 'ef46c82fdd369d40'}
 # Glyph height as a share of the original's, on the same baseline: the race HUD's
@@ -91,10 +91,6 @@ for f in sorted(glob.glob(ORIG + '/font_*_*.png')):
     fo = ImageFont.truetype(ttf, size)
     off = S                                       # the shadow: one original texel down and right
     out = Image.new('RGBA', (im.width * S, im.height * S), (0, 0, 0, 0))
-    grad = Image.new('RGBA', (1, cap_px + 2 * S))
-    for yy in range(grad.height):
-        t = yy / max(1, grad.height - 1)
-        grad.putpixel((0, yy), tuple(int(top[i] + (bot[i] - top[i]) * t) for i in range(3)) + (255,))
     for code, x, y, w in glyphs:
         if w == 0:
             continue
@@ -119,7 +115,6 @@ for f in sorted(glob.glob(ORIG + '/font_*_*.png')):
         cell = Image.new('RGBA', (cw, chh), (0, 0, 0, 0))
         shadow_l = Image.new('RGBA', gm.size, shadow + (255,))
         cell.paste(shadow_l, (gx - x * S + off, off), gm)
-        g = grad.resize((1, gm.height)) if False else None
         fill = Image.new('RGBA', gm.size)
         gtop = base_off - cap_px
         for yy in range(gm.height):
