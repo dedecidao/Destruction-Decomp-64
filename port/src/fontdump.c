@@ -1,6 +1,6 @@
 /*
- * DD64_FONTDUMP=1 (environment): write each font Font_DrawText uses, once, as
- * its whole atlas, to Data/Textures/fonts_original/:
+ * DD64_FONTDUMP=1 (environment), or a Data/Textures/fonts_original/ folder that
+ * exists: write each font Font_DrawText uses, once, as its whole atlas, there:
  *
  *   font_<hash>_<w>x<h>.png  the atlas: every glyph, in the game's own layout
  *   font_<hash>.txt          where each glyph is in it (x, y, width; one height)
@@ -126,7 +126,11 @@ void Port_FontSeen(const void *font) {
     FILE *txt;
 
     if (sDump < 0) {
-        sDump = SDL_getenv("DD64_FONTDUMP") != NULL;
+        /* on with the variable, or while the folder is there: new fonts are
+           collected as they are met, for making their HD versions */
+        char d[1100];
+        SDL_snprintf(d, sizeof(d), "%sData/Textures/fonts_original", Port_BaseDir());
+        sDump = SDL_getenv("DD64_FONTDUMP") != NULL || SDL_GetPathInfo(d, NULL);
     }
     if (font == NULL) {
         return;
