@@ -162,6 +162,8 @@ static const Setting sSettings[] = {
       "1 = a wide window shows more of the 3D view, unstretched, with the HUD and menus 4:3 in the middle" },
     { "video", "stretch", &gPortConfig.stretch, 0, "0 = keep 4:3 with side bars, 1 = stretch to the window" },
     { "video", "texture_filter", &gPortConfig.textureFilter, 1, "0 = nearest, 1 = bilinear, 2 = three-point (N64)" },
+    { "video", "hud_boxes", &gPortConfig.hudBoxes, 1,
+      "1 = the dark capsules behind the race HUD's score, time and cars left, as the N64; 0 = the numbers alone" },
     { "video", "hd_fonts", &gPortConfig.hdFonts, 1,
       "1 = the menu and HUD fonts drawn from the high-resolution ones in Data/Textures/fonts_hd, where there"
       " is one; 0 = the N64's" },

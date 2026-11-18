@@ -258,3 +258,25 @@ void Port_VideoToggleFullscreen(void) {
 s32 Port_TextFilter(void) {
     return gPortConfig.sharpText ? 0 : 0x2000;
 }
+
+int Port_GameDrawsWorld(void);
+
+/* Ui_Draw asks before each 2D element (src/auto/5EEAC.c). DD64_UILOG logs each
+   id and type drawn, once */
+s32 Port_UiHidden(s32 id, s32 type) {
+    static int log = -1;
+    static unsigned char seen[1024];
+    if (log < 0) {
+        log = SDL_getenv("DD64_UILOG") != NULL;
+    }
+    if (log && id >= 0 && id < 1024 && !seen[id]) {
+        seen[id] = 1;
+        Port_Log("ui: element %d type %d", id, type);
+    }
+    /* [video] hud_boxes off: the dark capsules behind the race HUD's numbers
+       (SCREEN_BOX1_SP to SCREEN_BOX8_SP, include/ids.h), in a race only */
+    if (!gPortConfig.hudBoxes && id >= 168 && id <= 175 && Port_GameDrawsWorld()) {
+        return 1;
+    }
+    return 0;
+}

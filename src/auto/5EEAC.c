@@ -73,6 +73,15 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
     GFX2(g, 0xED000000, 0x5003C0);
     for (n = ctx->x8B54; n != NULL; n = n->x4) {
         e = n->x0;
+#ifdef TARGET_PC
+        {
+            /* [video] hud_boxes: the PC options may hide some 2D elements */
+            s32 Port_UiHidden(s32 id, s32 type);
+            if (Port_UiHidden(*(s32 *)e, e->x4)) {
+                continue;
+            }
+        }
+#endif
         switch (e->x4) {
         case 1: {
             ElemA *a = e;
