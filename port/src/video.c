@@ -131,6 +131,14 @@ void Port_VideoApplySettings(void) {
     gfx_set_vsync(gPortConfig.vsync);
     gfx_set_texture_filter(gPortConfig.textureFilter);
     gfx_seamless_sky = gPortConfig.seamlessSky != 0;
+    {
+        /* [video] hd_fonts: glyphs already uploaded load again, from whichever art */
+        static int sHdFonts = -1;
+        if (sHdFonts >= 0 && sHdFonts != gPortConfig.hdFonts) {
+            gfx_texture_cache_clear();
+        }
+        sHdFonts = gPortConfig.hdFonts;
+    }
     if (gfx_edge_fill != (gPortConfig.edgeFill != 0)) {
         gfx_edge_fill = gPortConfig.edgeFill != 0;
         gfx_texture_cache_clear(); /* the textures load again, filled or not */
@@ -243,4 +251,50 @@ void Port_VideoToggleFullscreen(void) {
     gfx_sdl.set_fullscreen(gPortConfig.fullscreen);
     Port_ConfigSave();
     updateInterp();
+}
+
+/* The texture filter Ui_Draw sets for its text (src/auto/5EEAC.c): G_TF_POINT
+   with [video] sharp_text, else the game's own G_TF_BILERP */
+s32 Port_TextFilter(void) {
+    return gPortConfig.sharpText ? 0 : 0x2000;
+}
+
+int Port_GameDrawsWorld(void);
+
+/* Ui_Draw asks before each 2D element (src/auto/5EEAC.c). DD64_UILOG logs each
+   id and type drawn, once */
+s32 Port_UiHidden(s32 id, s32 type) {
+    static int log = -1;
+    static unsigned char seen[1024];
+    if (log < 0) {
+        log = SDL_getenv("DD64_UILOG") != NULL;
+    }
+    if (log && id >= 0 && id < 1024 && !seen[id]) {
+        seen[id] = 1;
+        Port_Log("ui: element %d type %d", id, type);
+    }
+    /* [video] hud_boxes off: the dark capsules behind the race HUD's numbers
+       (SCREEN_BOX1_SP to SCREEN_BOX8_SP, include/ids.h), in a race only */
+    if (!gPortConfig.hudBoxes && id >= 168 && id <= 175 && Port_GameDrawsWorld()) {
+        return 1;
+    }
+    return 0;
+}
+
+void Port_UiLogText(s32 id, const unsigned char *str, s32 x, s32 y) {
+    static unsigned char seen[1024];
+    if (SDL_getenv("DD64_UILOG") == NULL || id < 0 || id >= 1024 || seen[id]) {
+        return;
+    }
+    seen[id] = 1;
+    Port_Log("ui: text %d at %d,%d \"%s\"", id, x, y, str != NULL ? (const char *)str : "");
+}
+
+/* With the HD fonts, the race HUD's white numbers (score, place, cars left) go
+   down a little: the taller letters of the yellow titles above them touched */
+s32 Port_UiTextDY(s32 id) {
+    if (gPortConfig.hdFonts && (id == 444 || id == 518 || id == 424)) {
+        return 2;
+    }
+    return 0;
 }

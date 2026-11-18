@@ -73,6 +73,15 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
     GFX2(g, 0xED000000, 0x5003C0);
     for (n = ctx->x8B54; n != NULL; n = n->x4) {
         e = n->x0;
+#ifdef TARGET_PC
+        {
+            /* [video] hud_boxes: the PC options may hide some 2D elements */
+            s32 Port_UiHidden(s32 id, s32 type);
+            if (Port_UiHidden(*(s32 *)e, e->x4)) {
+                continue;
+            }
+        }
+#endif
         switch (e->x4) {
         case 1: {
             ElemA *a = e;
@@ -108,8 +117,29 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
             ElemC *c = (ElemC *)e;
             GFX2(g, 0xE200001C, 0x503048);
             GFX2(g, 0xE3000A01, 0);
+#ifdef TARGET_PC
+            {
+                /* DD64_UILOG: which text is which element */
+                void Port_UiLogText(s32 id, const u8 *str, s32 x, s32 y);
+                Port_UiLogText(*(s32 *)c, (const u8 *)c->x14, c->x18, c->x1A);
+            }
+            {
+                /* [video] sharp_text: the text point sampled, not bilinear. At
+                   320x240 the filter hardly shows; scaled up it blurs the glyphs */
+                s32 Port_TextFilter(void);
+                GFX2(g, 0xE3001201, Port_TextFilter());
+            }
+#else
             GFX2(g, 0xE3001201, 0x2000);
+#endif
+#ifdef TARGET_PC
+            {
+                s32 Port_UiTextDY(s32 id); /* lines moved for the HD fonts */
+                g = Font_DrawText(g, c->x10, c->x14, c->x18, c->x1A + Port_UiTextDY(*(s32 *)c), c->x1C);
+            }
+#else
             g = Font_DrawText(g, c->x10, c->x14, c->x18, c->x1A, c->x1C);
+#endif
             break;
         }
         }

@@ -24,6 +24,9 @@ typedef struct {
     int textureFilter;       /* 0 point, 1 bilinear, 2 three-point (N64) */
     int edgeFill;            /* see-through texels take their neighbours' colour (no dark cut-out edges) */
     int seamlessSky;         /* the race's sky dome filtered across the joins of its pieces */
+    int hudBoxes;            /* the dark capsules behind the race HUD's numbers */
+    int hdFonts;             /* UI fonts from Data/Textures/fonts_hd when there */
+    int sharpText;           /* menu and HUD text point sampled (no bilinear blur) */
     int drawDistance;        /* scenery and fog that many times further out: 1 = N64, 2, 4, 8, 16 */
     int showFps;             /* the frame counter in the corner */
     int renderer;            /* 0 OpenGL, 1 SDL_gpu (Vulkan); read at start */

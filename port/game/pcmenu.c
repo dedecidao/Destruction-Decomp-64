@@ -163,6 +163,10 @@ static Gfx *drawText(Gfx *g, Font *f, s32 x, s32 y, const char *s, u32 rgba) {
     GFX2(g, 0xE200001C, 0x0F0A4000); /* blended, as the UI's sprites */
     GFX2(g, 0xFC119623, 0xFF2FFFFF); /* texel * primitive, colour and alpha */
     GFX2(g, 0xFA000000, rgba);
+    {
+        void Port_FontSeen(const void *font); /* its HD version, if there is one */
+        Port_FontSeen(f);
+    }
     for (; *s != 0; s++) {
         i = glyph(f, (u8)*s);
         if (i < 0) {
@@ -195,6 +199,13 @@ static Gfx *drawText(Gfx *g, Font *f, s32 x, s32 y, const char *s, u32 rgba) {
             GFX2(g, 0xE7000000, 0);
             GFX2(g, 0xF5181200 | ((f->fmt & 7) << 21), 0x00080200);
             GFX2(g, 0xF2000000, 0x00080080);
+        }
+        {
+            /* the glyph alone, as Font_DrawText on PC (5F52C.c): no row of the
+               glyph below sampled at the bottom edge */
+            u32 lrs = ((f->widths[i] - 1) * 4) & 0xFFF, lrt = ((f->height - 1) * 4) & 0xFFF;
+            g[-4].w1 = 0x07000000 | (lrs << 12) | lrt;
+            g[-1].w1 = (lrs << 12) | lrt;
         }
         GFX2(g, 0xE4000000 | ((((x + f->widths[i]) * 4) & 0xFFF) << 12) | (((y + f->height) * 4) & 0xFFF),
              (((x * 4) & 0xFFF) << 12) | ((y * 4) & 0xFFF));

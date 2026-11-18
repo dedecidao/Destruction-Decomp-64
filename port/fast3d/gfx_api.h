@@ -54,5 +54,8 @@ void gfx_present(bool black);
 void gfx_set_vsync(int interval);
 void gfx_set_texture_filter(enum FilteringMode mode);
 void gfx_texture_cache_clear(void);
+/* A high-resolution image for a font atlas in game memory (port/src/fontdump.c) */
+void gfx_hd_atlas_register(const uint8_t *tex, uint32_t stride, uint32_t bpp, uint32_t w, uint32_t h,
+                           const uint8_t *orig_rgba, const uint8_t *hd_rgba, uint32_t hw, uint32_t hh);
 
 #endif

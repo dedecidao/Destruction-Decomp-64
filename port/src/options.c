@@ -97,6 +97,8 @@ static const Option kVideo[] = {
     { "n64 aa blur", &gPortConfig.n64AA, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "texture filter", &gPortConfig.textureFilter, kFilter, kFilterN, N(kFilter), 1, 0 },
     { "clean cut-outs", &gPortConfig.edgeFill, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "hd fonts", &gPortConfig.hdFonts, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "hud boxes", &gPortConfig.hudBoxes, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     { "seamless sky", &gPortConfig.seamlessSky, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "draw distance", &gPortConfig.drawDistance, kDistance, kDistanceN, N(kDistance), 1, 0 },
     { "anisotropy", &gPortConfig.anisotropy, kAniso, kAnisoN, N(kAniso), 1, 1 },

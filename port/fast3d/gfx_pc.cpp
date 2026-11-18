@@ -20,6 +20,7 @@
 #include <cstring>
 #include <list>
 #include <map>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -195,6 +196,8 @@ struct TextureCacheValue {
     uint32_t texture_id;
     uint32_t width, height;
     uint32_t checksum;
+    bool hd; /* a high-resolution font glyph (gfx_hd_atlas_register) was uploaded */
+    uint32_t hd_gen; /* hd_atlas_gen when uploaded: the fonts registered since may change it */
 };
 
 static std::unordered_map<TextureCacheKey, TextureCacheValue, TextureCacheKeyHash> texture_cache;
@@ -676,6 +679,88 @@ static uint32_t texture_checksum(const uint8_t *addr, uint32_t size) {
 
 /* The size of the texture bound in each slot, in texels (0: none) */
 static uint32_t bound_w[2], bound_h[2];
+static bool bound_hd[2]; /* the bound texture is a high-resolution glyph: drawn filtered */
+
+/*
+ * High-resolution font atlases (port/src/fontdump.c). The game loads one glyph
+ * at a time from its font's atlas; a load that falls inside a registered atlas,
+ * and whose texels are still that atlas's, is uploaded as the same rectangle cut
+ * from the high-resolution image. Texture coordinates stay in the original's
+ * texels (bound_w/h), so the larger glyph covers the same area.
+ */
+struct HdAtlas {
+    const uint8_t *tex;          /* the atlas in game memory */
+    uint32_t stride, bpp, w, h;  /* bytes a row, bytes a texel, size in texels */
+    std::vector<uint8_t> orig;   /* the atlas decoded, RGBA: a load is checked against it */
+    std::vector<uint8_t> hd;     /* the replacement, RGBA */
+    uint32_t hw, hh;
+};
+static std::vector<HdAtlas> hd_atlases;
+static std::mutex hd_atlases_lock; /* registered from the game thread */
+static uint32_t hd_atlas_gen; /* counts registrations: textures cached before one are checked again */
+
+extern "C" void gfx_hd_atlas_register(const uint8_t *tex, uint32_t stride, uint32_t bpp, uint32_t w, uint32_t h,
+                                      const uint8_t *orig_rgba, const uint8_t *hd_rgba, uint32_t hw, uint32_t hh) {
+    std::lock_guard<std::mutex> lock(hd_atlases_lock);
+    hd_atlas_gen++;
+    /* A font over memory another one used: that one is gone */
+    const uint8_t *end = tex + (size_t)stride * h;
+    hd_atlases.erase(std::remove_if(hd_atlases.begin(), hd_atlases.end(),
+                                    [&](const HdAtlas &e) {
+                                        return e.tex < end && tex < e.tex + (size_t)e.stride * e.h;
+                                    }),
+                     hd_atlases.end());
+    if (hd_rgba == NULL) {
+        return; /* only forgetting */
+    }
+    hd_atlases.emplace_back();
+    HdAtlas *a = &hd_atlases.back();
+    a->tex = tex;
+    a->stride = stride;
+    a->bpp = bpp;
+    a->w = w;
+    a->h = h;
+    a->orig.assign(orig_rgba, orig_rgba + (size_t)w * h * 4);
+    a->hd.assign(hd_rgba, hd_rgba + (size_t)hw * hh * 4);
+    a->hw = hw;
+    a->hh = hh;
+}
+
+/* The high-resolution cut for a w x h load at addr (decoded in rgba), or NULL */
+static const uint8_t *hd_atlas_lookup(const uint8_t *addr, uint32_t w, uint32_t h, const uint8_t *rgba,
+                                      uint32_t *out_w, uint32_t *out_h) {
+    static std::vector<uint8_t> cut;
+    std::lock_guard<std::mutex> lock(hd_atlases_lock);
+    for (const HdAtlas &a : hd_atlases) {
+        if (addr < a.tex || addr >= a.tex + (size_t)a.stride * a.h) {
+            continue;
+        }
+        uint32_t off = (uint32_t)(addr - a.tex), y = off / a.stride, x = (off % a.stride) / a.bpp;
+        if (x + w > a.w || y + h > a.h) {
+            continue;
+        }
+        bool same = true;
+        for (uint32_t r = 0; r < h && same; r++) {
+            same = memcmp(&rgba[(size_t)r * w * 4], &a.orig[((size_t)(y + r) * a.w + x) * 4], (size_t)w * 4) == 0;
+        }
+        if (!same) {
+            continue; /* the memory holds something else now */
+        }
+        uint32_t x0 = (uint32_t)((uint64_t)x * a.hw / a.w), x1 = (uint32_t)((uint64_t)(x + w) * a.hw / a.w);
+        uint32_t y0 = (uint32_t)((uint64_t)y * a.hh / a.h), y1 = (uint32_t)((uint64_t)(y + h) * a.hh / a.h);
+        if (x1 <= x0 || y1 <= y0) {
+            return NULL;
+        }
+        cut.resize((size_t)(x1 - x0) * (y1 - y0) * 4);
+        for (uint32_t r = y0; r < y1; r++) {
+            memcpy(&cut[(size_t)(r - y0) * (x1 - x0) * 4], &a.hd[((size_t)r * a.hw + x0) * 4], (size_t)(x1 - x0) * 4);
+        }
+        *out_w = x1 - x0;
+        *out_h = y1 - y0;
+        return cut.data();
+    }
+    return NULL;
+}
 
 /*
  * Bind the texture the tile's load gave slot i, importing it if new or changed.
@@ -698,6 +783,7 @@ static void import_texture(int i, int tile) {
         gfx_rapi->select_texture(i, 0, false);
         rendering_state.textures[i] = 0;
         bound_w[i] = bound_h[i] = 0;
+        bound_hd[i] = false;
         return;
     }
     if (full_line_bytes == 0) {
@@ -732,7 +818,9 @@ static void import_texture(int i, int tile) {
     TextureCacheKey key = { addr, pal_key, size_bytes, line_bytes, fmt, siz };
     uint32_t sum = texture_checksum(addr, size_bytes);
     auto it = texture_cache.find(key);
-    if (it != texture_cache.end() && it->second.checksum == sum && it->second.texture_id == rendering_state.textures[i] &&
+    const uint32_t gen = hd_atlas_gen;
+    if (it != texture_cache.end() && it->second.checksum == sum && it->second.hd_gen == gen &&
+        it->second.texture_id == rendering_state.textures[i] &&
         it->second.width == bound_w[i] && it->second.height == bound_h[i]) {
         return; /* the texture already bound: the batch goes on */
     }
@@ -740,11 +828,12 @@ static void import_texture(int i, int tile) {
     /* GL filter and wrap modes belong to the texture object: whatever gets bound
        here needs them set again (a new one is incomplete, so black, without) */
     rendering_state.cms[i] = rendering_state.cmt[i] = 0xFF;
-    if (it != texture_cache.end() && it->second.checksum == sum) {
+    if (it != texture_cache.end() && it->second.checksum == sum && it->second.hd_gen == gen) {
         gfx_rapi->select_texture(i, it->second.texture_id, false);
         rendering_state.textures[i] = it->second.texture_id;
         bound_w[i] = it->second.width;
         bound_h[i] = it->second.height;
+        bound_hd[i] = it->second.hd;
         return;
     }
 
@@ -777,10 +866,16 @@ static void import_texture(int i, int tile) {
         w = h = 1;
         memset(tex_upload_buffer, 0, 4);
     }
+    uint32_t hd_w = 0, hd_h = 0;
+    const uint8_t *hd = hd_atlases.empty() ? NULL : hd_atlas_lookup(addr, w, h, tex_upload_buffer, &hd_w, &hd_h);
     if (gfx_edge_fill) {
         fill_clear_texels(tex_upload_buffer, w, h);
     }
-    gfx_rapi->upload_texture(tex_upload_buffer, w, h);
+    if (hd != NULL) {
+        gfx_rapi->upload_texture(hd, hd_w, hd_h);
+    } else {
+        gfx_rapi->upload_texture(tex_upload_buffer, w, h);
+    }
     sky_note_upload(id, w, h);
     {
         /* DD64_TEXDUMP=1: save each upload as tex_<n>_<w>x<h>.bmp (the first 200; with
@@ -798,10 +893,11 @@ static void import_texture(int i, int tile) {
             }
         }
     }
-    texture_cache[key] = { id, w, h, sum };
+    texture_cache[key] = { id, w, h, sum, hd != NULL, gen };
     rendering_state.textures[i] = id;
     bound_w[i] = w;
     bound_h[i] = h;
+    bound_hd[i] = hd != NULL;
 }
 
 /*
@@ -1550,8 +1646,9 @@ static struct ColorCombiner *prepare_draw(bool use_fog_ok, bool *use_alpha_out, 
             import_texture(i, tile); /* flushes unless it is the texture bound */
             rdp.textures_changed[i] = false;
         }
-        bool linear = (rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT && cycle_type != G_CYC_COPY &&
-                      !rect_unscaled;
+        bool linear = ((rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT && cycle_type != G_CYC_COPY &&
+                       !rect_unscaled) ||
+                      bound_hd[i]; /* a high-resolution glyph is drawn filtered */
         uint8_t cms = rdp.texture_tile[tile].cms, cmt = rdp.texture_tile[tile].cmt;
         if (linear != rendering_state.linear[i] || cms != rendering_state.cms[i] || cmt != rendering_state.cmt[i]) {
             FLUSH("sampler");
