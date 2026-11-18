@@ -205,11 +205,11 @@ void Port_FontSeen(const void *font) {
             uint32_t sum = 0;
             fprintf(txt, "# Destruction Derby 64 font atlas %ux%u, glyph height %u, %s\n", w, h, height,
                     siz == 3 ? "RGBA32" : fmt == 3 ? "IA16" : "RGBA16");
-            fprintf(txt, "# index char x y width (texels; y is the glyph's top row)\n");
+            fprintf(txt, "# index code char x y width (texels; y is the glyph's top row)\n");
             for (i = 0; i < numChars; i++) {
                 uint32_t gw = rd8(widths + i);
                 uint32_t c = map != NULL ? rd8(map + i) : 0;
-                fprintf(txt, "%u %c %u %u %u\n", i, (c > 32 && c < 127) ? (int)c : '?', sum % perRow,
+                fprintf(txt, "%u %u %c %u %u %u\n", i, c, (c > 32 && c < 127) ? (int)c : '.', sum % perRow,
                         (sum / perRow) * height, gw);
                 sum += gw;
             }
