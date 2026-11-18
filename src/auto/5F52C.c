@@ -36,6 +36,10 @@ Gfx *Font_DrawText(Gfx *gfx, Font *f, u8 *str, s16 x, s16 y, s16 maxPerLine) {
     n = 0;
 #ifdef TARGET_PC
     {
+        void Port_FontSeen(const void *font); /* DD64_FONTDUMP: the atlas, once */
+        Port_FontSeen(f);
+    }
+    {
         /* a number is not wrapped (the drones' cars left past 99: the HUD's boxes
            are two characters a line) */
         u8 *q = str;
