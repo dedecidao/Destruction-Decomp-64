@@ -108,7 +108,16 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
             ElemC *c = (ElemC *)e;
             GFX2(g, 0xE200001C, 0x503048);
             GFX2(g, 0xE3000A01, 0);
+#ifdef TARGET_PC
+            {
+                /* [video] sharp_text: the text point sampled, not bilinear. At
+                   320x240 the filter hardly shows; scaled up it blurs the glyphs */
+                s32 Port_TextFilter(void);
+                GFX2(g, 0xE3001201, Port_TextFilter());
+            }
+#else
             GFX2(g, 0xE3001201, 0x2000);
+#endif
             g = Font_DrawText(g, c->x10, c->x14, c->x18, c->x1A, c->x1C);
             break;
         }

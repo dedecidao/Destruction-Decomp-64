@@ -244,3 +244,9 @@ void Port_VideoToggleFullscreen(void) {
     Port_ConfigSave();
     updateInterp();
 }
+
+/* The texture filter Ui_Draw sets for its text (src/auto/5EEAC.c): G_TF_POINT
+   with [video] sharp_text, else the game's own G_TF_BILERP */
+s32 Port_TextFilter(void) {
+    return gPortConfig.sharpText ? 0 : 0x2000;
+}
