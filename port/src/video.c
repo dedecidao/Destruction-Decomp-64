@@ -280,3 +280,21 @@ s32 Port_UiHidden(s32 id, s32 type) {
     }
     return 0;
 }
+
+void Port_UiLogText(s32 id, const unsigned char *str, s32 x, s32 y) {
+    static unsigned char seen[1024];
+    if (SDL_getenv("DD64_UILOG") == NULL || id < 0 || id >= 1024 || seen[id]) {
+        return;
+    }
+    seen[id] = 1;
+    Port_Log("ui: text %d at %d,%d \"%s\"", id, x, y, str != NULL ? (const char *)str : "");
+}
+
+/* With the HD fonts, the race HUD's white numbers (score, place, cars left) go
+   down a little: the taller letters of the yellow titles above them touched */
+s32 Port_UiTextDY(s32 id) {
+    if (gPortConfig.hdFonts && (id == 444 || id == 518 || id == 424)) {
+        return 2;
+    }
+    return 0;
+}

@@ -15,6 +15,9 @@ S = 4
 WIN = '/mnt/c/Windows/Fonts/'
 TEXT_FONT, NUM_FONT = WIN + 'tahomabd.ttf', WIN + 'impact.ttf'
 NUMERIC = {'231fc1c11fcbe347', 'ef46c82fdd369d40'}
+# Glyph height as a share of the original's, on the same baseline: the race HUD's
+# white numbers a little smaller, for a gap under the yellow titles above them
+SHRINK = {'231fc1c11fcbe347': 0.85}
 os.makedirs(OUT, exist_ok=True)
 
 def layout(h):
@@ -75,7 +78,7 @@ for f in sorted(glob.glob(ORIG + '/font_*_*.png')):
     # cap height and baseline from the '0' (or the first drawn glyph)
     ref = next((g for g in glyphs if chr(g[0]) == '0' and g[3] > 0), None) or next(g for g in glyphs if g[3] > 0)
     bb = body_box(im, ref[1], ref[2], ref[3], height, lum, shpx)
-    cap_px = (bb[3] - bb[1] + 1) * S
+    cap_px = int((bb[3] - bb[1] + 1) * S * SHRINK.get(h, 1.0))
     base_off = (bb[3] + 1 - ref[2]) * S          # baseline from the cell's top
     # font size whose '0' (or 'H') is cap_px tall
     size = 10
