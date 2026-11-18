@@ -38,8 +38,16 @@ void gfx_hd_atlas_register(const uint8_t *tex, uint32_t stride, uint32_t bpp, ui
 
 #define MAX_FONTS 64
 
-static const void *sSeen[MAX_FONTS]; /* by atlas: a font loaded again elsewhere is new */
-static int sNumSeen;
+/* The atlases seen, by address, with a copy of their bytes: the game loads and
+   frees fonts as screens change, and a new font can land where an old one was,
+   so a font is new whenever the bytes at its atlas differ from the copy */
+typedef struct {
+    const uint8_t *tex;
+    uint8_t *raw;
+    uint32_t len;
+} Seen;
+static Seen sSeen[MAX_FONTS];
+static int sNumSeen, sNextSlot;
 static int sDump = -1;
 
 /* Data/Textures/fonts_hd/font_<hash>_<w>x<h>.png, if there is one of this shape */
@@ -51,6 +59,7 @@ static void loadHd(uint64_t hash, const uint8_t *tex, uint32_t stride, uint32_t 
     SDL_snprintf(path, sizeof(path), "%sData/Textures/fonts_hd/font_%016llx_%ux%u.png", Port_BaseDir(),
                  (unsigned long long)hash, w, h);
     if (!SDL_GetPathInfo(path, NULL)) {
+        gfx_hd_atlas_register(tex, stride, bpp, w, h, NULL, NULL, 0, 0); /* none: forget an old one here */
         return;
     }
     s = SDL_LoadPNG(path);
@@ -75,6 +84,7 @@ static void loadHd(uint64_t hash, const uint8_t *tex, uint32_t stride, uint32_t 
         return;
     }
     if (c->pitch == c->w * 4) {
+        /* (registering replaces whatever was registered over this memory) */
         gfx_hd_atlas_register(tex, stride, bpp, w, h, rgba, c->pixels, (uint32_t)c->w, (uint32_t)c->h);
     } else {
         uint8_t *packed = SDL_malloc((size_t)c->w * c->h * 4);
@@ -122,15 +132,6 @@ void Port_FontSeen(const void *font) {
         return;
     }
     tex = hostPtr(Port_RdN64(f + F_TEX, 4));
-    for (i = 0; i < (uint32_t)sNumSeen; i++) {
-        if (sSeen[i] == tex) {
-            return;
-        }
-    }
-    if (sNumSeen < MAX_FONTS) {
-        sSeen[sNumSeen++] = tex;
-    }
-
     widths = hostPtr(Port_RdN64(f + F_WIDTHS, 4));
     map = hostPtr(Port_RdN64(f + F_MAP, 4));
     height = rd8(f + F_HEIGHT);
@@ -151,6 +152,28 @@ void Port_FontSeen(const void *font) {
     w = perRow;
     h = rows * height;
     bpp = siz == 2 ? 2 : 4;
+    {
+        Seen *e = NULL;
+        uint32_t len = w * h * bpp;
+        for (i = 0; i < (uint32_t)sNumSeen; i++) {
+            if (sSeen[i].tex == tex) {
+                e = &sSeen[i];
+            }
+        }
+        if (e != NULL && e->len == len && SDL_memcmp(e->raw, tex, len) == 0) {
+            return; /* the same font as last time */
+        }
+        if (e == NULL) {
+            e = &sSeen[sNumSeen < MAX_FONTS ? sNumSeen++ : (sNextSlot++ % MAX_FONTS)];
+        }
+        SDL_free(e->raw);
+        e->tex = tex;
+        e->len = len;
+        e->raw = SDL_malloc(len);
+        if (e->raw != NULL) {
+            SDL_memcpy(e->raw, tex, len);
+        }
+    }
     rgba = SDL_malloc((size_t)w * h * 4);
     if (rgba == NULL) {
         return;

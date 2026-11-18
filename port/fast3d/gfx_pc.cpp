@@ -700,16 +700,18 @@ static std::mutex hd_atlases_lock; /* registered from the game thread */
 extern "C" void gfx_hd_atlas_register(const uint8_t *tex, uint32_t stride, uint32_t bpp, uint32_t w, uint32_t h,
                                       const uint8_t *orig_rgba, const uint8_t *hd_rgba, uint32_t hw, uint32_t hh) {
     std::lock_guard<std::mutex> lock(hd_atlases_lock);
-    HdAtlas *a = NULL;
-    for (auto &e : hd_atlases) {
-        if (e.tex == tex) {
-            a = &e;
-        }
+    /* A font over memory another one used: that one is gone */
+    const uint8_t *end = tex + (size_t)stride * h;
+    hd_atlases.erase(std::remove_if(hd_atlases.begin(), hd_atlases.end(),
+                                    [&](const HdAtlas &e) {
+                                        return e.tex < end && tex < e.tex + (size_t)e.stride * e.h;
+                                    }),
+                     hd_atlases.end());
+    if (hd_rgba == NULL) {
+        return; /* only forgetting */
     }
-    if (a == NULL) {
-        hd_atlases.emplace_back();
-        a = &hd_atlases.back();
-    }
+    hd_atlases.emplace_back();
+    HdAtlas *a = &hd_atlases.back();
     a->tex = tex;
     a->stride = stride;
     a->bpp = bpp;
@@ -734,10 +736,12 @@ static const uint8_t *hd_atlas_lookup(const uint8_t *addr, uint32_t w, uint32_t 
         if (x + w > a.w || y + h > a.h) {
             continue;
         }
-        for (uint32_t r = 0; r < h; r++) {
-            if (memcmp(&rgba[(size_t)r * w * 4], &a.orig[((size_t)(y + r) * a.w + x) * 4], (size_t)w * 4) != 0) {
-                return NULL; /* the memory holds something else now */
-            }
+        bool same = true;
+        for (uint32_t r = 0; r < h && same; r++) {
+            same = memcmp(&rgba[(size_t)r * w * 4], &a.orig[((size_t)(y + r) * a.w + x) * 4], (size_t)w * 4) == 0;
+        }
+        if (!same) {
+            continue; /* the memory holds something else now */
         }
         uint32_t x0 = (uint32_t)((uint64_t)x * a.hw / a.w), x1 = (uint32_t)((uint64_t)(x + w) * a.hw / a.w);
         uint32_t y0 = (uint32_t)((uint64_t)y * a.hh / a.h), y1 = (uint32_t)((uint64_t)(y + h) * a.hh / a.h);
