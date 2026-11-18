@@ -1,3 +1,21 @@
+# DD64 PC port: dedecidao's fork
+
+A fork of [murkantor/Destruction-Decomp-64](https://github.com/murkantor/Destruction-Decomp-64), whose matching decompilation and native PC port (branch `port-pc`) this builds on. The fork adds:
+
+| Improvement | Setting (`dd64.ini`, or the PC options page: R on the main menu) |
+|---|---|
+| **Sharp UI text**: the menu and HUD text point sampled instead of the N64's bilinear blur | `[video] sharp_text` |
+| **No line under the HUD digits**: each glyph loaded and clamped alone | always |
+| **High-resolution fonts**: every UI font redrawn at 4x (Tahoma Bold, Impact for the numbers) with a gradient and the original drop shadow, from `Data/Textures/fonts_hd/`; switch on or off at any time | `[video] hd_fonts` |
+| **Font collection**: each font the game shows is saved once to `Data/Textures/fonts_original/`, for making its HD version with `tools/port/gen_hd_fonts.py` | the folder exists |
+| **HUD capsules off**: the dark capsules behind score, time and cars left can be hidden in races | `[video] hud_boxes` |
+| **HUD spacing**: with HD fonts, the white numbers sit a little lower, clear of the yellow titles | with `hd_fonts` |
+| **Windows icon** for `DestructionDerby64.exe` | always |
+
+Everything is PC-only: the N64 build still matches (`build/dd64.z64: OK`). No ROM data, and no font image made from it, is in the repository: you supply your own ROM, and the fonts are generated on your PC. Build the port with CMake after the matching build (`make extract && make`); for Windows, cross-compile from Linux or WSL with `-DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake -DSDL3_MINGW_ROOT=<SDL3 MinGW package>/i686-w64-mingw32`.
+
+---
+
 When you fear something, study it. Learn why you should fear it.
 
 The following repo is a 100% Claude Opus 5.5 Medium "Decompile this ROM, upload found functions to GIT. Document the functions, and give them suitable names". 100% slop. Basically 100% hands off while I was asleep and at work.
