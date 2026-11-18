@@ -162,6 +162,9 @@ static const Setting sSettings[] = {
       "1 = a wide window shows more of the 3D view, unstretched, with the HUD and menus 4:3 in the middle" },
     { "video", "stretch", &gPortConfig.stretch, 0, "0 = keep 4:3 with side bars, 1 = stretch to the window" },
     { "video", "texture_filter", &gPortConfig.textureFilter, 1, "0 = nearest, 1 = bilinear, 2 = three-point (N64)" },
+    { "video", "hd_fonts", &gPortConfig.hdFonts, 1,
+      "1 = the menu and HUD fonts drawn from the high-resolution ones in Data/Textures/fonts_hd, where there"
+      " is one; 0 = the N64's" },
     { "video", "sharp_text", &gPortConfig.sharpText, 1,
       "1 = the menu and HUD text drawn sharp, without filtering; 0 = filtered as the N64 (soft when scaled up)" },
     { "video", "seamless_sky", &gPortConfig.seamlessSky, 1,

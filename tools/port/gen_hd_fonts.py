@@ -38,12 +38,16 @@ def art_char(code, h):
     c = chr(code)
     return {'[': '(', ']': ')'}.get(c, c.lower() if c.isalpha() else c)
 
+def far(p, q):
+    """A body colour, not the shadow: well away from it in RGB"""
+    return sum((p[i] - q[i]) ** 2 for i in range(3)) > 60 ** 2
+
 def colors(im):
-    px = [p for p in im.getdata() if p[3] > 0]
+    px = [p for p in im.convert('RGBA').get_flattened_data() if p[3] > 0] if hasattr(im, 'get_flattened_data') else [p for p in im.getdata() if p[3] > 0]
     cnt = Counter(px)
     lum = lambda p: 0.3 * p[0] + 0.59 * p[1] + 0.11 * p[2]
     shadow = min(cnt.most_common(4), key=lambda kv: lum(kv[0]))[0]
-    body = [kv for kv in cnt.most_common() if lum(kv[0]) > lum(shadow) + 40]
+    body = [kv for kv in cnt.most_common() if far(kv[0], shadow)]
     main = body[0][0] if body else (255, 255, 255, 255)
     top = tuple(min(255, int(c + (255 - c) * 0.45)) for c in main[:3])
     bot = tuple(int(c * 0.72) for c in main[:3])
@@ -56,7 +60,7 @@ def body_box(im, x, y, w, hh, lum, shadow):
     for yy in range(y, y + hh):
         for xx in range(x, x + w):
             p = im.getpixel((xx, yy))
-            if p[3] > 0 and lum(p) > lum(shadow) + 40:
+            if p[3] > 0 and far(p, shadow):
                 xs.append(xx); ys.append(yy)
     return (min(xs), min(ys), max(xs), max(ys)) if xs else None
 
@@ -66,7 +70,8 @@ for f in sorted(glob.glob(ORIG + '/font_*_*.png')):
     im = Image.open(f).convert('RGBA')
     height, glyphs = layout(h)
     shadow, top, bot, lum, shpx = colors(im)
-    ttf = NUM_FONT if h in NUMERIC else TEXT_FONT
+    numeric = h in NUMERIC or all(chr(g[0]).isdigit() for g in glyphs if g[3] > 0)  # a numbers-only font
+    ttf = NUM_FONT if numeric else TEXT_FONT
     # cap height and baseline from the '0' (or the first drawn glyph)
     ref = next((g for g in glyphs if chr(g[0]) == '0' and g[3] > 0), None) or next(g for g in glyphs if g[3] > 0)
     bb = body_box(im, ref[1], ref[2], ref[3], height, lum, shpx)

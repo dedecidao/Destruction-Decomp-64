@@ -131,6 +131,14 @@ void Port_VideoApplySettings(void) {
     gfx_set_vsync(gPortConfig.vsync);
     gfx_set_texture_filter(gPortConfig.textureFilter);
     gfx_seamless_sky = gPortConfig.seamlessSky != 0;
+    {
+        /* [video] hd_fonts: glyphs already uploaded load again, from whichever art */
+        static int sHdFonts = -1;
+        if (sHdFonts >= 0 && sHdFonts != gPortConfig.hdFonts) {
+            gfx_texture_cache_clear();
+        }
+        sHdFonts = gPortConfig.hdFonts;
+    }
     if (gfx_edge_fill != (gPortConfig.edgeFill != 0)) {
         gfx_edge_fill = gPortConfig.edgeFill != 0;
         gfx_texture_cache_clear(); /* the textures load again, filled or not */

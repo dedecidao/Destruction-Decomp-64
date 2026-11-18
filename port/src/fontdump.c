@@ -58,7 +58,7 @@ static void loadHd(uint64_t hash, const uint8_t *tex, uint32_t stride, uint32_t 
 
     SDL_snprintf(path, sizeof(path), "%sData/Textures/fonts_hd/font_%016llx_%ux%u.png", Port_BaseDir(),
                  (unsigned long long)hash, w, h);
-    if (!SDL_GetPathInfo(path, NULL)) {
+    if (!gPortConfig.hdFonts || !SDL_GetPathInfo(path, NULL)) {
         gfx_hd_atlas_register(tex, stride, bpp, w, h, NULL, NULL, 0, 0); /* none: forget an old one here */
         return;
     }
@@ -134,6 +134,18 @@ void Port_FontSeen(const void *font) {
     }
     if (font == NULL) {
         return;
+    }
+    {
+        /* [video] hd_fonts changed: every font is looked at again */
+        static int sHd = -1;
+        if (sHd != gPortConfig.hdFonts) {
+            for (i = 0; i < (uint32_t)sNumSeen; i++) {
+                SDL_free(sSeen[i].raw);
+                sSeen[i].raw = NULL;
+                sSeen[i].len = 0;
+            }
+            sHd = gPortConfig.hdFonts;
+        }
     }
     tex = hostPtr(Port_RdN64(f + F_TEX, 4));
     widths = hostPtr(Port_RdN64(f + F_WIDTHS, 4));

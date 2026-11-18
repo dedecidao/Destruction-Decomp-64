@@ -197,6 +197,7 @@ struct TextureCacheValue {
     uint32_t width, height;
     uint32_t checksum;
     bool hd; /* a high-resolution font glyph (gfx_hd_atlas_register) was uploaded */
+    uint32_t hd_gen; /* hd_atlas_gen when uploaded: the fonts registered since may change it */
 };
 
 static std::unordered_map<TextureCacheKey, TextureCacheValue, TextureCacheKeyHash> texture_cache;
@@ -696,10 +697,12 @@ struct HdAtlas {
 };
 static std::vector<HdAtlas> hd_atlases;
 static std::mutex hd_atlases_lock; /* registered from the game thread */
+static uint32_t hd_atlas_gen; /* counts registrations: textures cached before one are checked again */
 
 extern "C" void gfx_hd_atlas_register(const uint8_t *tex, uint32_t stride, uint32_t bpp, uint32_t w, uint32_t h,
                                       const uint8_t *orig_rgba, const uint8_t *hd_rgba, uint32_t hw, uint32_t hh) {
     std::lock_guard<std::mutex> lock(hd_atlases_lock);
+    hd_atlas_gen++;
     /* A font over memory another one used: that one is gone */
     const uint8_t *end = tex + (size_t)stride * h;
     hd_atlases.erase(std::remove_if(hd_atlases.begin(), hd_atlases.end(),
@@ -815,7 +818,9 @@ static void import_texture(int i, int tile) {
     TextureCacheKey key = { addr, pal_key, size_bytes, line_bytes, fmt, siz };
     uint32_t sum = texture_checksum(addr, size_bytes);
     auto it = texture_cache.find(key);
-    if (it != texture_cache.end() && it->second.checksum == sum && it->second.texture_id == rendering_state.textures[i] &&
+    const uint32_t gen = hd_atlas_gen;
+    if (it != texture_cache.end() && it->second.checksum == sum && it->second.hd_gen == gen &&
+        it->second.texture_id == rendering_state.textures[i] &&
         it->second.width == bound_w[i] && it->second.height == bound_h[i]) {
         return; /* the texture already bound: the batch goes on */
     }
@@ -823,7 +828,7 @@ static void import_texture(int i, int tile) {
     /* GL filter and wrap modes belong to the texture object: whatever gets bound
        here needs them set again (a new one is incomplete, so black, without) */
     rendering_state.cms[i] = rendering_state.cmt[i] = 0xFF;
-    if (it != texture_cache.end() && it->second.checksum == sum) {
+    if (it != texture_cache.end() && it->second.checksum == sum && it->second.hd_gen == gen) {
         gfx_rapi->select_texture(i, it->second.texture_id, false);
         rendering_state.textures[i] = it->second.texture_id;
         bound_w[i] = it->second.width;
@@ -888,7 +893,7 @@ static void import_texture(int i, int tile) {
             }
         }
     }
-    texture_cache[key] = { id, w, h, sum, hd != NULL };
+    texture_cache[key] = { id, w, h, sum, hd != NULL, gen };
     rendering_state.textures[i] = id;
     bound_w[i] = w;
     bound_h[i] = h;
