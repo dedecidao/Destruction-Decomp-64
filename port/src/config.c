@@ -173,7 +173,7 @@ static const Setting sSettings[] = {
     { "video", "texture_filter", &gPortConfig.textureFilter, DEF(1, 2), "0 = nearest, 1 = bilinear, 2 = three-point (N64)" },
     { "video", "hud_boxes", &gPortConfig.hudBoxes, DEF(1, 0),
       "1 = the dark capsules behind the race HUD's score, time and cars left, as the N64; 0 = the numbers alone" },
-    { "video", "hd_fonts", &gPortConfig.hdFonts, 1,
+    { "video", "hd_fonts", &gPortConfig.hdFonts, DEF(1, 0),
       "1 = the menu and HUD fonts drawn from the high-resolution ones in Data/Textures/fonts_hd, where there"
       " is one; 0 = the N64's" },
     { "video", "sharp_text", &gPortConfig.sharpText, 1,
@@ -242,6 +242,33 @@ static const Setting sSettings[] = {
       "0 = load and save without the Controller Pak screens; 1 = the N64's screens" },
 };
 
+#ifdef __ANDROID__
+/*
+ * The Android defaults change as the port does (DEF() above). An older dd64.ini on
+ * the phone would keep the old values, so the file carries [android] config_version:
+ * below the current one, every setting goes back to its default once, but for the
+ * player's own adjustments kept here (volume, rumble strength, the dead zones, the
+ * pedals, cheats and saves). Bump it whenever the Android defaults change.
+ */
+#define ANDROID_CONFIG_VERSION 2
+
+static int keepOnUpgrade(const char *section, const char *key) {
+    static const char *const keep[] = { "volume", "rumble_strength", "deadzone", "stick_range", "camera_deadzone",
+                                        "analog_pedals", NULL };
+    int i;
+
+    if (SDL_strcasecmp(section, "cheats") == 0 || SDL_strcasecmp(section, "saves") == 0) {
+        return 1;
+    }
+    for (i = 0; keep[i] != NULL; i++) {
+        if (SDL_strcasecmp(key, keep[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+#endif
+
 void Port_ConfigLoad(void) {
     size_t size;
     char *text;
@@ -282,9 +309,38 @@ void Port_ConfigLoad(void) {
     gPortConfig.keyboardPlayer = 0;  /* no keyboard rows on a phone */
     gPortConfig.raphnet = 0;         /* raphnet.c is not built on Android */
     gPortConfig.pakOnAllPorts = 0;   /* controller paks row hidden */
-    gPortConfig.drones = 1;          /* drones, set all drones to, cpu unlockables: removed on */
-    gPortConfig.droneCar = -1;       /* Android for now (Andre's decision after the phase 2 docs: */
-    gPortConfig.cpuUnlockables = 0;  /* the drones made cars fly at arena starts) */
+    gPortConfig.drones = 1;          /* drones and set all drones to: removed on Android */
+    gPortConfig.droneCar = -1;       /* (the drones made cars fly at arena starts) */
+    gPortConfig.hdFonts = 0;         /* hd fonts hidden: they do not work on Android yet */
+#endif
+#ifdef __ANDROID__
+    {
+        int ver = Port_IniGetInt("android", "config_version", 0);
+        if (ver < ANDROID_CONFIG_VERSION) {
+            if (text != NULL) {
+                for (i = 0; i < SDL_arraysize(sSettings); i++) {
+                    if (!keepOnUpgrade(sSettings[i].section, sSettings[i].key)) {
+                        *sSettings[i].field = sSettings[i].def;
+                    }
+                }
+                Port_Log("config: the Android defaults (version %d) replace those of version %d", ANDROID_CONFIG_VERSION,
+                         ver);
+            }
+            Port_IniSetInt("android", "config_version", ANDROID_CONFIG_VERSION);
+            text = NULL; /* save it */
+            /* the forced values again, after the reset */
+            gPortConfig.fullscreen = 1;
+            gPortConfig.stretch = 0;
+            gPortConfig.maxFps = 0;
+            gPortConfig.freeCamera = 1;
+            gPortConfig.keyboardPlayer = 0;
+            gPortConfig.raphnet = 0;
+            gPortConfig.pakOnAllPorts = 0;
+            gPortConfig.drones = 1;
+            gPortConfig.droneCar = -1;
+            gPortConfig.hdFonts = 0;
+        }
+    }
 #endif
     if (text == NULL) {
         Port_ConfigSave();

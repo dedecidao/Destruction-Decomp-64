@@ -175,24 +175,27 @@ static const Option kVideo[] = {
     { "resolution", &sWindow, kWindow, kWindowN, N(kWindow), 1, 1 },
     { "vsync", &gPortConfig.vsync, kVsync, kVsyncN, N(kVsync), 1, 0 },
     /* { "frame limit", &gPortConfig.maxFps, kFps, kFpsN, N(kFps), 1, 0 }, */
-    { "interpolation", &gPortConfig.interpolation, kInterp, kInterpN, N(kInterp), 1, 0 },
+    /* interpolation, clean cut-outs, seamless sky: in the advanced page */
     { "3d resolution", &gPortConfig.internalHeight, kRes, kResN, N(kRes), 1, 0 },
     { "anti-aliasing", &gPortConfig.msaa, kMsaa, kMsaaN, N(kMsaa), 1, 0 },
-    { "clean cut-outs", &gPortConfig.edgeFill, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
-    { "hd fonts", &gPortConfig.hdFonts, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
-    { "seamless sky", &gPortConfig.seamlessSky, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    /* { "hd fonts", &gPortConfig.hdFonts, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+       hidden on Android for now: the HD fonts do not work there yet (config.c keeps them off) */
     { "draw distance", &gPortConfig.drawDistance, kDistance, kDistanceN, N(kDistance), 1, 0 },
     { "fps counter", &gPortConfig.showFps, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "renderer", &gPortConfig.renderer, kRenderer, kRendererN, N(kRenderer), 0, 1 },
 };
 /* The technical rows, out of the video page */
 static const Option kAdvanced[] = {
+    { "interpolation", &gPortConfig.interpolation, kInterp, kInterpN, N(kInterp), 1, 0 },
+    { "clean cut-outs", &gPortConfig.edgeFill, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "seamless sky", &gPortConfig.seamlessSky, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "screen shape", &sAspect, kAspect, kAspectN, N(kAspect), 1, 0 },
     { "n64 aa blur", &gPortConfig.n64AA, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "texture filter", &gPortConfig.textureFilter, kFilter, kFilterN, N(kFilter), 1, 0 },
     { "hud boxes", &gPortConfig.hudBoxes, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     { "anisotropy", &gPortConfig.anisotropy, kAniso, kAnisoN, N(kAniso), 1, 1 },
     { "skip intros", &gPortConfig.skipIntros, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "cpu unlockables", &gPortConfig.cpuUnlockables, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
 };
 static const Option kAudio[] = {
     { "master volume", &gPortConfig.volume, kVolume, kVolumeN, N(kVolume), 0, 0 },
@@ -200,11 +203,10 @@ static const Option kAudio[] = {
     { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
 };
 static const Option kGame[] = {
-    /* drones, set all drones to, cpu unlockables: removed on Android for now (config.c
-       keeps them at 1x / default / off)
+    /* drones and set all drones to: removed on Android (not what the port is for; config.c
+       keeps them at 1x / default). cpu unlockables: in the advanced page.
     { "drones", &gPortConfig.drones, kDrones, kDronesN, N(kDrones), 0, 1 },
-    { "set all drones to", &gPortConfig.droneCar, kDroneCar, kDroneCarN, N(kDroneCar), 0, 0 },
-    { "cpu unlockables", &gPortConfig.cpuUnlockables, kOffOn, kOffOnN, N(kOffOn), 0, 0 }, */
+    { "set all drones to", &gPortConfig.droneCar, kDroneCar, kDroneCarN, N(kDroneCar), 0, 0 }, */
     { "announce every wreck", &gPortConfig.announceAllWrecks, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     /* skip intros: in the advanced page */
 };
