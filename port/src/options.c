@@ -196,10 +196,12 @@ static const Option kAudio[] = {
     { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
 };
 static const Option kGame[] = {
+    /* drones, set all drones to, cpu unlockables: removed on Android for now (config.c
+       keeps them at 1x / default / off)
     { "drones", &gPortConfig.drones, kDrones, kDronesN, N(kDrones), 0, 1 },
     { "set all drones to", &gPortConfig.droneCar, kDroneCar, kDroneCarN, N(kDroneCar), 0, 0 },
+    { "cpu unlockables", &gPortConfig.cpuUnlockables, kOffOn, kOffOnN, N(kOffOn), 0, 0 }, */
     { "announce every wreck", &gPortConfig.announceAllWrecks, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
-    { "cpu unlockables", &gPortConfig.cpuUnlockables, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     /* skip intros: in the advanced page */
 };
 static const Option kControls[] = {

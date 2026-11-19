@@ -158,7 +158,7 @@ static const Setting sSettings[] = {
     { "video", "vsync", &gPortConfig.vsync, 1, "0 = off, 1 = on, -1 = adaptive, 2 = VRR (G-Sync/FreeSync: on, capped just under the display's rate)" },
     { "video", "max_fps", &gPortConfig.maxFps, 0,
       "Frame cap: 0 = none (with vsync, the display's rate), or 30, 40, 60, 120, 144 ... The game runs at 60 Hz either way" },
-    { "video", "interpolation", &gPortConfig.interpolation, 1,
+    { "video", "interpolation", &gPortConfig.interpolation, DEF(1, 0),
       "Frames shown faster or slower than the game's 60: 1 = drawn in between, smooth (up to a frame behind);"
       " 2 = drawn ahead of the newest frame (no added lag); 0 = off (max_fps 30 then runs the game at 30, as the N64 often did)" },
     { "video", "msaa", &gPortConfig.msaa, DEF(4, 2), "Multisample anti-aliasing: 1 (off), 2, 4 or 8" },
@@ -180,7 +180,7 @@ static const Setting sSettings[] = {
       "1 = the menu and HUD text drawn sharp, without filtering; 0 = filtered as the N64 (soft when scaled up)" },
     { "video", "seamless_sky", &gPortConfig.seamlessSky, 1,
       "1 = the sky's pieces are filtered across their joins (no seams in the clouds); 0 = as the N64" },
-    { "video", "edge_fill", &gPortConfig.edgeFill, 0,
+    { "video", "edge_fill", &gPortConfig.edgeFill, DEF(0, 1),
       "1 = see-through texels take their neighbours' colour, so filtered cut-outs (trees) have no dark edge;"
       " 0 = as the N64" },
     { "video", "draw_distance", &gPortConfig.drawDistance, DEF(1, 16),
@@ -278,6 +278,9 @@ void Port_ConfigLoad(void) {
     gPortConfig.keyboardPlayer = 0;  /* no keyboard rows on a phone */
     gPortConfig.raphnet = 0;         /* raphnet.c is not built on Android */
     gPortConfig.pakOnAllPorts = 0;   /* controller paks row hidden */
+    gPortConfig.drones = 1;          /* drones, set all drones to, cpu unlockables: removed on */
+    gPortConfig.droneCar = -1;       /* Android for now (Andre's decision after the phase 2 docs: */
+    gPortConfig.cpuUnlockables = 0;  /* the drones made cars fly at arena starts) */
 #endif
     if (text == NULL) {
         Port_ConfigSave();
