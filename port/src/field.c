@@ -99,6 +99,14 @@ void Msg_Queue(s32 id, s32 delay, u8 force, u8 once);
 static s32 sWreckLast = 0x7FFF;
 static s32 sCutPending;
 
+/*
+ * ======================================================================
+ * TODO(FUTURE_MOD): THE WRECK HOOK. Every car wreck in a race comes through here
+ * (`left` = cars still racing). [game] announce_all_wrecks stays OFF by default
+ * for now; Andre plans to force it ON and inject custom SFX or visual effects at
+ * this exact point (DOCS_ANDROID_PORT.md, "Memorizado").
+ * ======================================================================
+ */
 void Port_FieldAnnounceWreck(s32 left, s32 racing) {
     if (!racing || left > sWreckLast) {
         sWreckLast = left; /* a new race, the countdown */

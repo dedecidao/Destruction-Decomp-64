@@ -31,14 +31,28 @@ static const int kDisplay[] = { 0, 1, 2 }; /* window, borderless fullscreen, exc
 static const char *const kDisplayN[] = { "window", "fullscreen", "exclusive" };
 static int sDisplay;
 
+#ifndef __ANDROID__
 static const int kWindow[] = { 0, 1, 2, 3, 4, 5 };
 static const char *const kWindowN[] = { "960x720", "1280x720", "1280x960", "1600x900", "1920x1080", "2560x1440" };
 static const int kWindowW[] = { 960, 1280, 1280, 1600, 1920, 2560 };
 static const int kWindowH[] = { 720, 720, 960, 900, 1080, 1440 };
+#else
+/* Android: the output resolution (GameActivity sizes the surface by its height,
+   the width following the screen's shape); takes effect at the next start */
+static const int kWindow[] = { 0, 1 };
+static const char *const kWindowN[] = { "720p", "1080p (full hd)" };
+static const int kWindowW[] = { 1280, 1920 };
+static const int kWindowH[] = { 720, 1080 };
+#endif
 static int sWindow;
 
+#ifndef __ANDROID__
 static const int kAspect[] = { 0, 1, 2 }; /* 4:3, widescreen, stretched (two fields) */
 static const char *const kAspectN[] = { "4:3", "widescreen", "stretched" };
+#else
+static const int kAspect[] = { 0, 1 }; /* Android: no "stretched" */
+static const char *const kAspectN[] = { "4:3", "widescreen" };
+#endif
 static int sAspect;
 
 static const int kVsync[] = { 0, 1, -1, 2 };
@@ -47,18 +61,40 @@ static const int kFps[] = { 0, 30, 40, 60, 75, 90, 120, 144, 165, 240 };
 static const char *const kFpsN[] = { "no limit", "30", "40", "60", "75", "90", "120", "144", "165", "240" };
 static const int kInterp[] = { 0, 1, 2 };
 static const char *const kInterpN[] = { "off", "smooth", "low latency" };
+#ifndef __ANDROID__
 static const int kMsaa[] = { 1, 2, 4, 8 };
 static const char *const kMsaaN[] = { "off", "2x", "4x", "8x" };
+#else
+/* Android: 2x by default (cheap on tile-based GPUs, the samples stay in tile
+   memory; 4x is black with SDL_gpu on the Adreno 740, app/.../android/gpu_caps.c) */
+static const int kMsaa[] = { 1, 2 };
+static const char *const kMsaaN[] = { "off", "2x" };
+#endif
+#ifndef __ANDROID__
 static const int kDistance[] = { 1, 2, 4, 8, 16 };
 static const char *const kDistanceN[] = { "n64", "x2", "x4", "x8", "x16" };
+#else
+static const int kDistance[] = { 8, 16 }; /* Android: geometry is cheap, x16 by default */
+static const char *const kDistanceN[] = { "x8", "x16" };
+#endif
 static const int kFilter[] = { 0, 1, 2 };
 static const char *const kFilterN[] = { "nearest", "bilinear", "n64 3-point" };
 static const int kAniso[] = { 1, 2, 4, 8, 16 };
 static const char *const kAnisoN[] = { "off", "2x", "4x", "8x", "16x" };
 static const int kRenderer[] = { 0, 1 };
+#ifndef __ANDROID__
 static const char *const kRendererN[] = { "opengl", "sdl gpu - vulkan" };
+#else
+/* Android: OpenGL ES runs (gfx_opengl.cpp) but at a few fps on the Adreno 740 */
+static const char *const kRendererN[] = { "opengl es (slow)", "vulkan" };
+#endif
+#ifndef __ANDROID__
 static const int kRes[] = { 0, 240, 480, 720, 1080 };
 static const char *const kResN[] = { "window", "240 - n64", "480", "720", "1080" };
+#else
+static const int kRes[] = { 720, 1080 }; /* Android: 720p by default, 1080p for faster phones */
+static const char *const kResN[] = { "720p", "1080p" };
+#endif
 
 static const int kVolume[] = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 };
 static const char *const kVolumeN[] = { "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" };
@@ -85,6 +121,7 @@ static const char *const kDroneCarN[] = { "default", "car 1", "car 2", "car 3", 
 static const int kPaks[] = { 0, 1 };
 static const char *const kPaksN[] = { "player 1 only", "every player" };
 
+#ifndef __ANDROID__
 static const Option kVideo[] = {
     { "display", &sDisplay, kDisplay, kDisplayN, N(kDisplay), 1, 0 },
     { "window size", &sWindow, kWindow, kWindowN, N(kWindow), 1, 0 },
@@ -129,6 +166,56 @@ static const Option kControls[] = {
     { "controller paks", &gPortConfig.pakOnAllPorts, kPaks, kPaksN, N(kPaks), 0, 1 },
 };
 
+#else
+static const Option kVideo[] = {
+    /* display: removed (always full screen); frame limit: hidden for now */
+    { "resolution", &sWindow, kWindow, kWindowN, N(kWindow), 1, 1 },
+    { "vsync", &gPortConfig.vsync, kVsync, kVsyncN, N(kVsync), 1, 0 },
+    /* { "frame limit", &gPortConfig.maxFps, kFps, kFpsN, N(kFps), 1, 0 }, */
+    { "interpolation", &gPortConfig.interpolation, kInterp, kInterpN, N(kInterp), 1, 0 },
+    { "3d resolution", &gPortConfig.internalHeight, kRes, kResN, N(kRes), 1, 0 },
+    { "anti-aliasing", &gPortConfig.msaa, kMsaa, kMsaaN, N(kMsaa), 1, 0 },
+    { "clean cut-outs", &gPortConfig.edgeFill, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "hd fonts", &gPortConfig.hdFonts, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "seamless sky", &gPortConfig.seamlessSky, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "draw distance", &gPortConfig.drawDistance, kDistance, kDistanceN, N(kDistance), 1, 0 },
+    { "fps counter", &gPortConfig.showFps, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "renderer", &gPortConfig.renderer, kRenderer, kRendererN, N(kRenderer), 0, 1 },
+};
+/* The technical rows, out of the video page */
+static const Option kAdvanced[] = {
+    { "screen shape", &sAspect, kAspect, kAspectN, N(kAspect), 1, 0 },
+    { "n64 aa blur", &gPortConfig.n64AA, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "texture filter", &gPortConfig.textureFilter, kFilter, kFilterN, N(kFilter), 1, 0 },
+    { "hud boxes", &gPortConfig.hudBoxes, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "anisotropy", &gPortConfig.anisotropy, kAniso, kAnisoN, N(kAniso), 1, 1 },
+    { "skip intros", &gPortConfig.skipIntros, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+};
+static const Option kAudio[] = {
+    { "master volume", &gPortConfig.volume, kVolume, kVolumeN, N(kVolume), 0, 0 },
+    { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
+};
+static const Option kGame[] = {
+    { "drones", &gPortConfig.drones, kDrones, kDronesN, N(kDrones), 0, 1 },
+    { "set all drones to", &gPortConfig.droneCar, kDroneCar, kDroneCarN, N(kDroneCar), 0, 0 },
+    { "announce every wreck", &gPortConfig.announceAllWrecks, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "cpu unlockables", &gPortConfig.cpuUnlockables, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    /* skip intros: in the advanced page */
+};
+static const Option kControls[] = {
+    { "rumble", &gPortConfig.rumble, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "rumble strength", &gPortConfig.rumbleStrength, kStrength, kStrengthN, N(kStrength), 0, 0 },
+    { "stick dead zone", &gPortConfig.deadzone, kDeadzone, kDeadzoneN, N(kDeadzone), 0, 0 },
+    { "stick range", &gPortConfig.stickRange, kRange, kRangeN, N(kRange), 0, 0 },
+    /* { "right stick camera", &gPortConfig.freeCamera, kOffOn, kOffOnN, N(kOffOn), 0, 0 }, forced on (config.c) */
+    { "camera dead zone", &gPortConfig.cameraDeadzone, kDeadzone, kDeadzoneN, N(kDeadzone), 0, 0 },
+    { "analog pedals", &gPortConfig.analogPedals, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    /* { "keyboard drives", ... }, { "raphnet adapter", ... }, { "controller paks", ... }:
+       not on a phone (config.c keeps them off) */
+};
+
+#endif
+
 static SDL_AtomicInt sApplyVideo, sSave; /* for the main thread */
 static int sCaptureRow;
 
@@ -144,8 +231,13 @@ static const Page kPages[] = {
     { "sound", kAudio, N(kAudio), 0 },
     { "controls", kControls, N(kControls), 0 },
     { "game", kGame, N(kGame), 0 },
+#ifndef __ANDROID__
     { "keys", NULL, 0, 1 },
     { "pad", NULL, 0, 2 },
+#else
+    { "advanced", kAdvanced, N(kAdvanced), 0 },
+    /* keys and pad: hidden on Android (touch controls and gamepads work as they are) */
+#endif
 };
 
 int Port_InputCount(void);
@@ -203,13 +295,19 @@ const char *Port_OptPageName(int page) {
     return kPages[page].name;
 }
 
+/* Every settings page ends with "restore defaults" (its rows back to their defaults) */
+#define RESTORE_LABEL "restore defaults"
+
 int Port_OptCount(int page) {
-    return kPages[page].bind ? Port_InputCount() + 1 : kPages[page].count; /* + reset all */
+    return kPages[page].bind ? Port_InputCount() + 1 : kPages[page].count + 1; /* + reset all / restore defaults */
 }
 
 const char *Port_OptLabel(int page, int i) {
     if (kPages[page].bind) {
         return i < Port_InputCount() ? Port_InputLabel(i) : "reset all";
+    }
+    if (i >= kPages[page].count) {
+        return RESTORE_LABEL;
     }
     return kPages[page].opts[i].label;
 }
@@ -233,6 +331,9 @@ const char *Port_OptValue(int page, int i) {
         }
         return text[0] != '\0' ? text : "-";
     }
+    if (i >= kPages[page].count) {
+        return "";
+    }
     {
         const Option *o = &kPages[page].opts[i];
         return o->names[choice(o)];
@@ -240,7 +341,44 @@ const char *Port_OptValue(int page, int i) {
 }
 
 int Port_OptNeedsRestart(int page, int i) {
-    return kPages[page].bind ? 0 : kPages[page].opts[i].restart;
+    return kPages[page].bind || i >= kPages[page].count ? 0 : kPages[page].opts[i].restart;
+}
+
+static void setDefault(int *field) {
+    int v;
+
+    if (Port_ConfigDefault(field, &v)) {
+        *field = v;
+    }
+}
+
+/* "restore defaults": every row of the page back to its default (config.c), the
+   derived rows through the settings they stand for */
+static void restorePage(int page) {
+    const Page *pg = &kPages[page];
+    int i, video = 0;
+
+    for (i = 0; i < pg->count; i++) {
+        const Option *o = &pg->opts[i];
+        if (o->field == &sWindow) {
+            setDefault(&gPortConfig.windowWidth);
+            setDefault(&gPortConfig.windowHeight);
+        } else if (o->field == &sAspect) {
+            setDefault(&gPortConfig.widescreen);
+            setDefault(&gPortConfig.stretch);
+        } else if (o->field == &sDisplay) {
+            setDefault(&gPortConfig.fullscreen);
+            setDefault(&gPortConfig.fullscreenExclusive);
+        } else {
+            setDefault(o->field);
+        }
+        video |= o->video;
+    }
+    loadDerived();
+    if (video) {
+        SDL_SetAtomicInt(&sApplyVideo, 1);
+    }
+    SDL_SetAtomicInt(&sSave, 1);
 }
 
 int Port_OptIsBindPage(int page) {
@@ -269,6 +407,10 @@ void Port_OptChange(int page, int i, int dir) {
             return;
         }
         SDL_SetAtomicInt(&sSave, 1);
+        return;
+    }
+    if (i >= kPages[page].count) {
+        restorePage(page);
         return;
     }
     const Option *o = &kPages[page].opts[i];

@@ -1296,6 +1296,13 @@ static void gfx_opengl_init(void) {
     if (GLAD_GL_ARB_depth_clamp) {
         glEnable(GL_DEPTH_CLAMP);
     }
+#ifdef __ANDROID__
+    /* OpenGL ES (Android) has glDepthRangef but no glDepthRange; glad's desktop GL
+       loader only fetches glDepthRangef for GL 4.1, which an ES 3.2 context is not */
+    if (glad_glDepthRangef == NULL) {
+        glad_glDepthRangef = (PFNGLDEPTHRANGEFPROC)SDL_GL_GetProcAddress("glDepthRangef");
+    }
+#endif
     gl_set_depth_range(0.0f, 1.0f);
     glDepthFunc(GL_LEQUAL);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

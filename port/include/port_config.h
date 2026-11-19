@@ -59,6 +59,8 @@ extern PortConfig gPortConfig;
 
 void Port_ConfigLoad(void);
 void Port_ConfigSave(void);
+/* The default of the setting stored in `field`: 1 and *out, or 0 */
+int Port_ConfigDefault(const int *field, int *out);
 /* The folder next to the executable, ending in a separator */
 const char *Port_BaseDir(void);
 
