@@ -34,6 +34,12 @@ void Sound_FadeOutAll(s32 mask, s32 frames) {
     if (frames == 0) {
         steps = 1;
     }
+#ifdef TARGET_PC
+    if (mask & 2) {
+        void Port_MusicFadeOut(s32 frames);
+        Port_MusicFadeOut(frames); /* a replacement track fades with the music */
+    }
+#endif
     v = gVoices;
     for (i = 0; i < gNumVoices; i++, v++) {
         if ((v->sfxId && (mask & 1)) || (!v->sfxId && (mask & 2))) {

@@ -189,6 +189,9 @@ static const Setting sSettings[] = {
     { "video", "renderer", &gPortConfig.renderer, DEF(0, 1),
       "opengl, or sdlgpu: SDL's GPU API (Vulkan). Takes effect the next time the game starts", kRendererNames },
     { "audio", "volume", &gPortConfig.volume, 100, "Master volume, 0-100" },
+    { "audio", "synth_rate", &gPortConfig.synthRate, DEF(22050, 44100),
+      "The game's synthesizer: 22050 = as the N64; 44100 = mixed at twice the rate, clearer highs"
+      " (instruments pitched up no longer alias), same pitch and reverb. Takes effect at the next start" },
     { "audio", "latency", &gPortConfig.audioLatency, 80,
       "Output delay in milliseconds (N64: about 20); raise it if the sound stutters" },
     { "input", "rumble", &gPortConfig.rumble, 1, "1 = Rumble Pak on every controller that can rumble" },
@@ -268,6 +271,7 @@ void Port_ConfigLoad(void) {
     }
     gPortConfig.drones = SDL_clamp(gPortConfig.drones, 1, 10);
     gPortConfig.droneCar = SDL_clamp(gPortConfig.droneCar, -1, 23);
+    gPortConfig.synthRate = gPortConfig.synthRate >= 44100 ? 44100 : 22050;
 #ifdef __ANDROID__
     /* Settings the Android options page hides (port/src/options.c), kept at the
        values that make sense on a phone whatever an older dd64.ini says */

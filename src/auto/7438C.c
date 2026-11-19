@@ -1,5 +1,12 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* [audio] synth_rate (port/src/audio.c) */
+int Port_SynthRate(void);
+float Port_SynthPitchScale(void);
+s32 Port_SynthScaleSamples(s32 n);
+s32 Port_SynthScaleLowpass(s32 fc);
+#endif
 
 typedef struct ALFilter_s {
     struct ALFilter_s *source;
@@ -43,7 +50,11 @@ s32 alResampleParam(void *filter, s32 paramID, void *param)
             break;
         case 7:
             data.i = (s32)param;
+#ifdef TARGET_PC
+            r->ratio = data.f * Port_SynthPitchScale(); /* the driver's ratios assume 22050 Hz */
+#else
             r->ratio = data.f;
+#endif
             break;
         case 8:
             r->upitch = 1;

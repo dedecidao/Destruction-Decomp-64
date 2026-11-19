@@ -98,6 +98,8 @@ static const char *const kResN[] = { "720p", "1080p" };
 
 static const int kVolume[] = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 };
 static const char *const kVolumeN[] = { "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" };
+static const int kSynth[] = { 22050, 44100 };
+static const char *const kSynthN[] = { "n64 - 22 khz", "high - 44 khz" };
 static const int kLatency[] = { 40, 60, 80, 100, 150 };
 static const char *const kLatencyN[] = { "40 ms", "60 ms", "80 ms", "100 ms", "150 ms" };
 
@@ -144,6 +146,7 @@ static const Option kVideo[] = {
 };
 static const Option kAudio[] = {
     { "master volume", &gPortConfig.volume, kVolume, kVolumeN, N(kVolume), 0, 0 },
+    { "synth quality", &gPortConfig.synthRate, kSynth, kSynthN, N(kSynth), 0, 1 },
     { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
 };
 static const Option kGame[] = {
@@ -193,6 +196,7 @@ static const Option kAdvanced[] = {
 };
 static const Option kAudio[] = {
     { "master volume", &gPortConfig.volume, kVolume, kVolumeN, N(kVolume), 0, 0 },
+    { "synth quality", &gPortConfig.synthRate, kSynth, kSynthN, N(kSynth), 0, 1 },
     { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
 };
 static const Option kGame[] = {

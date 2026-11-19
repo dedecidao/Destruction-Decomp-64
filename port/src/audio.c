@@ -45,6 +45,52 @@
 #include "port_config.h"
 #include "port_shadow.h"
 
+/* ---- The synthesizer's rate ([audio] synth_rate) ----
+ *
+ * The N64 game mixes at 22050 Hz (src/auto/5D430.c). The libultra synthesizer
+ * takes any rate, but this game's driver sets each voice's pitch as a plain ratio
+ * (AudioVoice_UpdatePitch, 676B4.c) that assumes 22050, and the reverb's delays
+ * (alFxNew, 71F34.c) are counted in samples. At 44100 the resampler's ratio
+ * (alResampleParam, 7438C.c) is halved and the delays doubled, so the pitch and the
+ * reverb's timing stay the same while the mix keeps the samples' high frequencies
+ * (the N64 mix tops out at 11 kHz, and instruments pitched up alias below it).
+ */
+#define N64_SYNTH_RATE 22050
+
+int Port_SynthRate(void) {
+    return gPortConfig.synthRate >= 44100 ? 44100 : N64_SYNTH_RATE;
+}
+
+float Port_SynthPitchScale(void) {
+    return (float)N64_SYNTH_RATE / (float)Port_SynthRate();
+}
+
+/* Bytes of the port's RAM, below gRamEnd, given to the synthesizer's heap instead of
+   the N64's (0x35B60 at 0x800D3200, of which the game leaves 6 KB free at 22050 Hz:
+   at 44100 the output buffers and the reverb's delay line double and no longer fit).
+   0 at 22050: the N64's heap. The game's main heap ends that much lower (5C480.c). */
+s32 Port_SynthHeapSize(void) {
+    return Port_SynthRate() == N64_SYNTH_RATE ? 0 : 0x80000;
+}
+
+/* A length in samples at 22050 Hz, at the synthesizer's rate (multiples of 8, as the
+   reverb's sections need) */
+s32 Port_SynthScaleSamples(s32 n) {
+    return (s32)((s64)n * Port_SynthRate() / N64_SYNTH_RATE) & ~7;
+}
+
+/* The reverb's one-pole low-pass coefficient (0-0x7FFF) for the same cutoff at the
+   synthesizer's rate: a' = 1 - (1 - a)^(22050 / rate) */
+s32 Port_SynthScaleLowpass(s32 fc) {
+    double a = fc / 32768.0;
+
+    if (Port_SynthRate() == N64_SYNTH_RATE || fc <= 0) {
+        return fc;
+    }
+    a = 1.0 - SDL_pow(1.0 - a, (double)N64_SYNTH_RATE / Port_SynthRate());
+    return (s32)(a * 32768.0 + 0.5);
+}
+
 /* ---- The AI ---- */
 
 #define RING_BYTES (256 * 1024) /* over a second at any rate the game could ask for */
@@ -266,6 +312,7 @@ void Port_AudioQueue(const void *buf, u32 bytes) {
     sQueued += bytes;
     sWavBytes += sWav != NULL ? bytes : 0;
     SDL_UnlockMutex(sLock);
+    Port_MusicDumpSamples(buf, bytes, sRate); /* DD64_MUSICDUMP (port/src/music.c) */
 }
 
 /*

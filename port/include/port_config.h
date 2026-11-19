@@ -33,6 +33,7 @@ typedef struct {
     /* [audio] */
     int volume;              /* 0-100 */
     int audioLatency;        /* output delay, ms */
+    int synthRate;           /* the game's synthesizer: 22050 (the N64's) or 44100 */
     /* [input] */
     int rumble;              /* 0 off, 1 on */
     int rumbleStrength;      /* 0-100 */

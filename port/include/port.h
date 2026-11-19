@@ -29,6 +29,18 @@ u32 Port_RomRead32(u32 offset);
 void Port_RamReserve(void);
 void Port_RamInit(void);
 void *Port_N64ToHost(uint32_t addr);
+/* [audio] synth_rate (port/src/audio.c): the game's synthesizer at 22050 or 44100 Hz */
+int Port_SynthRate(void);
+float Port_SynthPitchScale(void);
+s32 Port_SynthScaleSamples(s32 n);
+s32 Port_SynthScaleLowpass(s32 fc);
+s32 Port_SynthHeapSize(void);
+/* Replacement music (port/src/music.c): Data/Music/song_XXXXXXXX.ogg/.mp3 */
+void Port_MusicStart(u32 rom);
+s32 Port_MusicSetVolume(s32 vol);
+void Port_MusicFadeOut(s32 frames);
+int Port_MusicReplaced(void);
+void Port_MusicDumpSamples(const void *samples, u32 bytes, u32 rate);
 uint32_t Port_HostToN64(const void *p);
 void Port_BlockLoaded(void *dst, u32 size);
 
