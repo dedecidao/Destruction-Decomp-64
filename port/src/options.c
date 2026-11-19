@@ -216,6 +216,16 @@ static const Option kControls[] = {
 
 #endif
 
+/* The game's own cheats (DOCS_INTERNALS_AND_OPTIONS.md), as switches */
+static const Option kCheats[] = {
+    { "unlock all cars", &gPortConfig.cheatAllCars, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "unlock all tracks", &gPortConfig.cheatAllTracks, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "indestructible car", &gPortConfig.cheatInvincible, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "no time limit", &gPortConfig.cheatNoTimeLimit, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "super ram", &gPortConfig.cheatSuperRam, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "heavy car", &gPortConfig.cheatHeavyCar, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+};
+
 static SDL_AtomicInt sApplyVideo, sSave; /* for the main thread */
 static int sCaptureRow;
 
@@ -238,6 +248,7 @@ static const Page kPages[] = {
     { "advanced", kAdvanced, N(kAdvanced), 0 },
     /* keys and pad: hidden on Android (touch controls and gamepads work as they are) */
 #endif
+    { "cheats", kCheats, N(kCheats), 0 },
 };
 
 int Port_InputCount(void);
@@ -473,7 +484,50 @@ void Port_OptionsApplyPending(void) {
 static u16 sMenuButtons;
 static s8 sMenuX, sMenuY;
 
+/*
+ * The cheats page sets the flags of the game's own cheat codes (typed on the Game
+ * Mode screen, src/auto/2E00C.c Cheat_UpdateInput), at their N64 addresses:
+ *   0x801253F8 u8   every car (DUD)            read by the car select screens
+ *   0x801253F9 u8   every difficulty (BRAD)    3FF30.c, 404DC.c, 40808.c
+ *   0x8012540C + 0x18 * player: x0 indestructible (BAR), x1 no time limit (DAD),
+ *              x2 damage zones at 100 (LRLR), x4 heavy (BALD), copied into the car
+ *              when it is made (1E308.c), so those count from the next race
+ * Cheat_ResetAll (2DF20.c) clears them when the game changes mode, so they are set
+ * again each time the game reads the pads. A switch turned off clears its flag once
+ * (a code typed in the game works as before otherwise).
+ */
+#define CHEAT_ALL_CARS 0x801253F8u
+#define CHEAT_ALL_TRACKS 0x801253F9u
+#define CHEAT_PLAYERS 0x8012540Cu
+#define CHEAT_PLAYER_SIZE 0x18u
+
+static void cheatByte(u32 addr, int on, int *was) {
+    u8 *p = (u8 *)Port_N64ToHost(addr);
+
+    if (p != NULL && (on || *was)) {
+        *p = on ? 1 : 0;
+    }
+    *was = on;
+}
+
+static void applyCheats(void) {
+    static int was[2 + 4 * 4];
+    const int perPlayer[4] = { gPortConfig.cheatInvincible, gPortConfig.cheatNoTimeLimit, gPortConfig.cheatSuperRam,
+                               gPortConfig.cheatHeavyCar };
+    static const u32 perPlayerOff[4] = { 0, 1, 2, 4 };
+    int pl, k;
+
+    cheatByte(CHEAT_ALL_CARS, gPortConfig.cheatAllCars, &was[0]);
+    cheatByte(CHEAT_ALL_TRACKS, gPortConfig.cheatAllTracks, &was[1]);
+    for (pl = 0; pl < 4; pl++) {
+        for (k = 0; k < 4; k++) {
+            cheatByte(CHEAT_PLAYERS + CHEAT_PLAYER_SIZE * pl + perPlayerOff[k], perPlayer[k], &was[2 + pl * 4 + k]);
+        }
+    }
+}
+
 void Port_InputNoteMenuPad(const OSContPad *pad) {
+    applyCheats();
     sMenuButtons = pad->button;
     sMenuX = pad->stick_x;
     sMenuY = pad->stick_y;

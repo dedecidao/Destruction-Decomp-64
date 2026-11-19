@@ -50,6 +50,13 @@ typedef struct {
     int announceAllWrecks;   /* a wreck past the numbered cars-left lines: their opening, no number */
     int cpuUnlockables;      /* computer cars may drive the unlockable cars */
     int skipIntros;          /* the logos at boot pass at once: straight to the title */
+    /* [cheats] (port/src/options.c applies them: the game's own cheat flags) */
+    int cheatAllCars;        /* every car, bonus cars too (the game's code DUD) */
+    int cheatAllTracks;      /* every difficulty and with it every track (BRAD) */
+    int cheatInvincible;     /* the players' cars take no damage (BAR) */
+    int cheatNoTimeLimit;    /* the clock does not end a race (DAD) */
+    int cheatSuperRam;       /* every damage zone at 100: hits hard, takes little (LRLR) */
+    int cheatHeavyCar;       /* the players' cars 8.8 times as heavy (BALD) */
     /* [saves] */
     int pakOnAllPorts;       /* every controller has a Controller Pak, not only the first */
     int pakScreens;          /* the game's Controller Pak screens; 0 = loads and saves without them */
