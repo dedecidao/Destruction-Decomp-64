@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
         }
     }
     Port_ConfigLoad();
-    SDL_SetAppMetadata("Wrecked Metal 64 DX", "0.1", "dd64.pc");
+    SDL_SetAppMetadata("Wrecked Metal", "0.1", "dd64.pc");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
         Port_Fatal("SDL_Init: %s", SDL_GetError());
     }
