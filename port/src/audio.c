@@ -389,7 +389,10 @@ void Port_AudioCheckPlayback(void) {
         return;
     }
     sRetryWait = WATCH_RETRY_MIN_NS;
-    if (now - last > WATCH_STALL_NS) {
+    /* `now` is read before sLock: the device thread may have stamped sTakenNs after it,
+       and an unsigned now - last would then wrap to ~584 years, a "stall" that reopened
+       a healthy device (tens of ms on the main thread: the 60 -> 40 fps hitches) */
+    if (now > last && now - last > WATCH_STALL_NS) {
         Port_Log("audio: playback stopped while running; reopening the device");
         openStream(rate, 1);
     }

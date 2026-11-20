@@ -258,8 +258,11 @@ void Port_MusicCheckPlayback(u64 now, u64 since) {
     if (sLock == NULL || sKind == TRACK_NONE || sFadeStep > 0.0f) {
         return;
     }
-    if (now - SDL_max(sFedNs, since) <= 500000000ull || now < retryAt) {
-        return;
+    {
+        u64 last = SDL_max(sFedNs, since); /* sFedNs is stamped by the device thread, maybe after `now` */
+        if (now <= last || now - last <= 500000000ull || now < retryAt) {
+            return;
+        }
     }
     Port_Log("music: the track's stream stopped playing; opening it again");
     retryAt = now + 1000000000ull;
