@@ -222,11 +222,42 @@ u64 Port_FrameIntervalNs(s32 rate) {
     return 1000000000ULL / (u64)fps;
 }
 
+static unsigned sFrameCount; /* game frames since the last fps line */
+
+/* Every 30 s of play the log gets the game's frame rate: the average and the worst
+   second, so a report from another device says how it ran (loading counts too) */
+static void noteFrameRate(void) {
+    static u64 secStart, sumStart;
+    static unsigned secFrames, secs, worst = ~0u;
+    u64 now = SDL_GetTicksNS();
+
+    if (secStart == 0) {
+        secStart = sumStart = now;
+    }
+    secFrames++;
+    if (now - secStart < 1000000000ull) {
+        return;
+    }
+    worst = secFrames < worst ? secFrames : worst;
+    secFrames = 0;
+    secStart = now;
+    if (++secs >= 30) {
+        double elapsed = (double)(now - sumStart) / 1e9;
+        Port_Log("fps: last %.0f s %.1f on average, worst second %u", elapsed, sFrameCount / elapsed, worst);
+        sFrameCount = 0;
+        secs = 0;
+        worst = ~0u;
+        sumStart = now;
+    }
+}
+
 /* Fps_Update, each game frame: the fields it took (DD64_GFXLOG: a histogram) */
 void Port_NoteGameFrame(s32 fields) {
     static int logTimes = -1;
     static unsigned hist[4], n;
 
+    sFrameCount++;
+    noteFrameRate();
     if (logTimes < 0) {
         logTimes = SDL_getenv("DD64_GFXLOG") != NULL;
     }

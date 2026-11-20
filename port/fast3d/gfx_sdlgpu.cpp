@@ -1401,8 +1401,18 @@ static void gfx_sdlgpu_init(void) {
     if (!SDL_ClaimWindowForGPUDevice(dev, wnd)) {
         sysFatalError("SDL_gpu could not use the window: %s", SDL_GetError());
     }
-    /* (SDL 3.2 cannot name the device: SDL_GetGPUDeviceProperties is 3.4's) */
     sysLogPrintf(LOG_NOTE, "SDL_gpu: driver %s", SDL_GetGPUDeviceDriver(dev));
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+    {
+        /* the GPU and its driver, for reports from other devices (SDL 3.2 cannot name them) */
+        SDL_PropertiesID p = SDL_GetGPUDeviceProperties(dev);
+        const char *info = SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_DRIVER_INFO_STRING, NULL);
+        sysLogPrintf(LOG_NOTE, "SDL_gpu: device %s; driver %s %s",
+                     SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_NAME_STRING, "?"),
+                     SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING, "?"),
+                     info != NULL ? info : SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, "?"));
+    }
+#endif
 
     static const SDL_GPUTextureFormat depths[] = { SDL_GPU_TEXTUREFORMAT_D24_UNORM, SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
                                                    SDL_GPU_TEXTUREFORMAT_D32_FLOAT };
