@@ -273,12 +273,45 @@ static int keepOnUpgrade(const char *section, const char *key) {
 }
 #endif
 
+/*
+ * The Fidelity profile (the Android launcher's "Play Fidelity", main.c's --fidelity):
+ * the game as the N64 had it, next to the customized Wrecked Metal. Its own file,
+ * dd64-fidelity.ini, so neither profile's choices change the other's. These are its
+ * defaults (a new file, a defaults upgrade, "restore defaults"); the controls marked
+ * forced are the port's customizations and are not choices there (options.c hides them).
+ */
+static const struct {
+    int *field;
+    int value;
+    int forced;
+} kFidelity[] = {
+    { &gPortConfig.hudBoxes, 1, 0 },       /* the dark capsules behind the HUD, as the N64 */
+    { &gPortConfig.sharpText, 0, 0 },      /* text filtered as the N64 */
+    { &gPortConfig.seamlessSky, 0, 0 },
+    { &gPortConfig.edgeFill, 0, 0 },       /* cut-outs with the N64's dark edges */
+    { &gPortConfig.synthRate, 22050, 0 },  /* the N64's synthesizer rate */
+    { &gPortConfig.analogPedals, 0, 1 },   /* the triggers are Z and R, as an N64 pad */
+    { &gPortConfig.freeCamera, 0, 1 },     /* the right stick is the C buttons */
+    { &gPortConfig.touchArrows, 0, 1 },    /* the on-screen N64 controller, stick and four C */
+};
+
+static void applyFidelity(int defaults) {
+    size_t i;
+
+    for (i = 0; i < SDL_arraysize(kFidelity); i++) {
+        if (defaults || kFidelity[i].forced) {
+            *kFidelity[i].field = kFidelity[i].value;
+        }
+    }
+}
+
 void Port_ConfigLoad(void) {
     size_t size;
     char *text;
     size_t i;
 
-    SDL_snprintf(sIniPath, sizeof(sIniPath), "%sdd64.ini", Port_BaseDir());
+    SDL_snprintf(sIniPath, sizeof(sIniPath), "%s%s", Port_BaseDir(),
+                 gPortConfig.fidelity ? "dd64-fidelity.ini" : "dd64.ini");
     text = SDL_LoadFile(sIniPath, &size);
     if (text != NULL) {
         parse(text);
@@ -346,6 +379,10 @@ void Port_ConfigLoad(void) {
         }
     }
 #endif
+    if (gPortConfig.fidelity) {
+        applyFidelity(text == NULL); /* a new file (or a defaults upgrade): all of them */
+        Port_Log("config: the Fidelity profile (%s)", sIniPath);
+    }
     if (text == NULL) {
         Port_ConfigSave();
     }
@@ -441,6 +478,12 @@ void Port_ConfigSave(void) {
 int Port_ConfigDefault(const int *field, int *out) {
     size_t i;
 
+    for (i = 0; gPortConfig.fidelity && i < SDL_arraysize(kFidelity); i++) {
+        if (kFidelity[i].field == field) {
+            *out = kFidelity[i].value;
+            return 1;
+        }
+    }
     for (i = 0; i < SDL_arraysize(sSettings); i++) {
         if (sSettings[i].field == field) {
             *out = sSettings[i].def;

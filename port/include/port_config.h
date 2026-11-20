@@ -44,6 +44,8 @@ typedef struct {
     int cameraDeadzone;      /* the right stick's dead zone, percent */
     int analogPedals;        /* the triggers are gas and brake, by how far they are pressed */
     int touchArrows;         /* Android: steer with on-screen arrows instead of the analog stick */
+    int fidelity;            /* Android: the Fidelity profile ("--fidelity", the launcher's Play
+                                Fidelity): the game as the N64 had it, in dd64-fidelity.ini; not saved */
     int raphnet;             /* read raphnet N64 adapters raw */
     int raphnetPlayer;       /* the controller the adapter's first port is, 1-4 */
     /* [game] */
