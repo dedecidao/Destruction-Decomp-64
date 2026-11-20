@@ -263,6 +263,34 @@ static const Page kPages[] = {
     { "cheats", kCheats, N(kCheats), 0 },
 };
 
+#ifdef __ANDROID__
+/* The Fidelity profile (config.c): the controls as an N64 pad, without the port's
+   right stick camera, analog pedals and touch steering */
+static const Option kControlsFidelity[] = {
+    { "rumble", &gPortConfig.rumble, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "rumble strength", &gPortConfig.rumbleStrength, kStrength, kStrengthN, N(kStrength), 0, 0 },
+    { "stick dead zone", &gPortConfig.deadzone, kDeadzone, kDeadzoneN, N(kDeadzone), 0, 0 },
+    { "stick range", &gPortConfig.stickRange, kRange, kRangeN, N(kRange), 0, 0 },
+};
+static const Page kPagesFidelity[] = {
+    { "video", kVideo, N(kVideo), 0 },
+    { "sound", kAudio, N(kAudio), 0 },
+    { "controls", kControlsFidelity, N(kControlsFidelity), 0 },
+    { "game", kGame, N(kGame), 0 },
+#ifndef __ANDROID__
+    { "keys", NULL, 0, 1 },
+    { "pad", NULL, 0, 2 },
+#else
+    { "advanced", kAdvanced, N(kAdvanced), 0 },
+    /* keys and pad: hidden on Android (touch controls and gamepads work as they are) */
+#endif
+    { "cheats", kCheats, N(kCheats), 0 },
+};
+#define PAGES (gPortConfig.fidelity ? kPagesFidelity : kPages)
+#else
+#define PAGES kPages
+#endif
+
 int Port_InputCount(void);
 const char *Port_InputLabel(int i);
 const char *Port_InputBinding(int device, int i);
@@ -315,31 +343,31 @@ int Port_OptPages(void) {
 }
 
 const char *Port_OptPageName(int page) {
-    return kPages[page].name;
+    return PAGES[page].name;
 }
 
 /* Every settings page ends with "restore defaults" (its rows back to their defaults) */
 #define RESTORE_LABEL "restore defaults"
 
 int Port_OptCount(int page) {
-    return kPages[page].bind ? Port_InputCount() + 1 : kPages[page].count + 1; /* + reset all / restore defaults */
+    return PAGES[page].bind ? Port_InputCount() + 1 : PAGES[page].count + 1; /* + reset all / restore defaults */
 }
 
 const char *Port_OptLabel(int page, int i) {
-    if (kPages[page].bind) {
+    if (PAGES[page].bind) {
         return i < Port_InputCount() ? Port_InputLabel(i) : "reset all";
     }
-    if (i >= kPages[page].count) {
+    if (i >= PAGES[page].count) {
         return RESTORE_LABEL;
     }
-    return kPages[page].opts[i].label;
+    return PAGES[page].opts[i].label;
 }
 
 /* The row's value as shown */
 const char *Port_OptValue(int page, int i) {
-    if (kPages[page].bind) {
+    if (PAGES[page].bind) {
         static char text[48];
-        int dev = kPages[page].bind - 1;
+        int dev = PAGES[page].bind - 1;
         if (i >= Port_InputCount()) {
             return "";
         }
@@ -354,17 +382,17 @@ const char *Port_OptValue(int page, int i) {
         }
         return text[0] != '\0' ? text : "-";
     }
-    if (i >= kPages[page].count) {
+    if (i >= PAGES[page].count) {
         return "";
     }
     {
-        const Option *o = &kPages[page].opts[i];
+        const Option *o = &PAGES[page].opts[i];
         return o->names[choice(o)];
     }
 }
 
 int Port_OptNeedsRestart(int page, int i) {
-    return kPages[page].bind || i >= kPages[page].count ? 0 : kPages[page].opts[i].restart;
+    return PAGES[page].bind || i >= PAGES[page].count ? 0 : PAGES[page].opts[i].restart;
 }
 
 static void setDefault(int *field) {
@@ -378,7 +406,7 @@ static void setDefault(int *field) {
 /* "restore defaults": every row of the page back to its default (config.c), the
    derived rows through the settings they stand for */
 static void restorePage(int page) {
-    const Page *pg = &kPages[page];
+    const Page *pg = &PAGES[page];
     int i, video = 0;
 
     for (i = 0; i < pg->count; i++) {
@@ -405,7 +433,7 @@ static void restorePage(int page) {
 }
 
 int Port_OptIsBindPage(int page) {
-    return kPages[page].bind != 0;
+    return PAGES[page].bind != 0;
 }
 
 int Port_OptCapturing(void) {
@@ -416,8 +444,8 @@ int Port_OptCapturing(void) {
    bindings page: right (or A) waits for the new key or button, left restores the
    default; on "reset all", either resets every input. */
 void Port_OptChange(int page, int i, int dir) {
-    if (kPages[page].bind) {
-        int dev = kPages[page].bind - 1, k;
+    if (PAGES[page].bind) {
+        int dev = PAGES[page].bind - 1, k;
         if (i >= Port_InputCount()) {
             for (k = 0; k < Port_InputCount(); k++) {
                 Port_InputResetBinding(dev, k);
@@ -432,11 +460,11 @@ void Port_OptChange(int page, int i, int dir) {
         SDL_SetAtomicInt(&sSave, 1);
         return;
     }
-    if (i >= kPages[page].count) {
+    if (i >= PAGES[page].count) {
         restorePage(page);
         return;
     }
-    const Option *o = &kPages[page].opts[i];
+    const Option *o = &PAGES[page].opts[i];
     int c = choice(o) + dir;
 
     if (c < 0) {

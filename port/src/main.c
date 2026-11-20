@@ -174,8 +174,16 @@ int main(int argc, char **argv) {
 #else
     installCrashHandler();
 #endif
+    {
+        int a;
+        for (a = 1; a < argc; a++) {
+            if (SDL_strcmp(argv[a], "--fidelity") == 0) {
+                gPortConfig.fidelity = 1; /* before the settings: they come from dd64-fidelity.ini */
+            }
+        }
+    }
     Port_ConfigLoad();
-    SDL_SetAppMetadata("Destruction Derby 64", "0.1", "dd64.pc");
+    SDL_SetAppMetadata("Wrecked Metal 64 DX", "0.1", "dd64.pc");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
         Port_Fatal("SDL_Init: %s", SDL_GetError());
     }
