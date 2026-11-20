@@ -88,6 +88,12 @@ void Port_PumpEvents(void) {
             case SDL_EVENT_DID_ENTER_FOREGROUND:
                 Port_AudioSetForeground(1);
                 break;
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                Port_AudioSetFocused(0);
+                break;
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                Port_AudioSetFocused(1);
+                break;
             case SDL_EVENT_KEY_DOWN:
                 if (Port_InputCaptureEvent(&e)) {
                     break;

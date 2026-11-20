@@ -220,9 +220,29 @@ void Port_AudioInit(void) {
     atexit(audioAtExit);
 }
 
-static u64 sOpenedNs; /* when the stream was last opened (or tried), for the watchdog */
+static u64 sOpenedNs;      /* when the stream was last opened (or tried), for the watchdog */
+static int sOpening;       /* an open is under way (the game thread or the watchdog) */
+static int sOpenFailed;    /* the last open found no device: the watchdog tries again */
+static SDL_Mutex *sOpenLock; /* one open at a time: two would both pull from the ring */
+
+static void openStreamLocked(u32 freq, int force);
 
 static void openStream(u32 freq, int force) {
+    if (sOpenLock == NULL) {
+        sOpenLock = SDL_CreateMutex();
+    }
+    SDL_LockMutex(sOpenLock);
+    SDL_LockMutex(sLock);
+    sOpening = 1;
+    SDL_UnlockMutex(sLock);
+    openStreamLocked(freq, force);
+    SDL_LockMutex(sLock);
+    sOpening = 0;
+    SDL_UnlockMutex(sLock);
+    SDL_UnlockMutex(sOpenLock);
+}
+
+static void openStreamLocked(u32 freq, int force) {
     SDL_AudioSpec spec;
     u32 ms = (u32)SDL_clamp(gPortConfig.audioLatency, 20, 1000);
 
@@ -263,6 +283,9 @@ static void openStream(u32 freq, int force) {
     stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, pullFromRing, NULL);
     if (stream == NULL) {
         Port_Log("audio: no output device (%s); running silent", SDL_GetError());
+        SDL_LockMutex(sLock);
+        sOpenFailed = 1; /* the watchdog tries again (Port_AudioCheckPlayback) */
+        SDL_UnlockMutex(sLock);
         return;
     }
     {
@@ -276,6 +299,7 @@ static void openStream(u32 freq, int force) {
     }
     SDL_LockMutex(sLock);
     sStream = stream;
+    sOpenFailed = 0;
     SDL_UnlockMutex(sLock);
     SDL_ResumeAudioStreamDevice(stream);
 }
@@ -294,7 +318,8 @@ void Port_AudioSetFrequency(u32 freq) {
  * stolen while paused, so the game stayed silent. The open itself can fail the same
  * way ("no output device ... running silent"), which silenced a whole session.
  *
- * Here: while the game is in the foreground, a device that has not asked for sound
+ * Here: while the game is in the foreground with its window focused, a device that has
+ * not asked for sound
  * for 500 ms gets its stream closed and opened again, and a stream that could not be
  * opened is tried again after 1 s, doubling up to 30 s. Leaving the foreground
  * stops the checks and coming back gives the device its 500 ms first (SDL's own
@@ -305,8 +330,8 @@ void Port_AudioSetFrequency(u32 freq) {
 #define WATCH_RETRY_MIN_NS 1000000000ull
 #define WATCH_RETRY_MAX_NS 30000000000ull
 
-static int sForeground = 1;
-static u64 sWatchFrom;                       /* the checks count from here (foreground, open) */
+static int sForeground = 1, sFocused = 1;
+static u64 sWatchFrom;                       /* the checks count from here (foreground, focus, open) */
 static u64 sRetryWait = WATCH_RETRY_MIN_NS, sNextRetry;
 
 void Port_AudioSetForeground(int foreground) {
@@ -316,31 +341,45 @@ void Port_AudioSetForeground(int foreground) {
     sNextRetry = 0;
 }
 
+/* The game window's focus: covered by another activity (a dialog, the app chooser)
+   Android pauses the audio while the game's loop may still run, and the device not
+   asking for sound then is not a stolen stream */
+void Port_AudioSetFocused(int focused) {
+    sFocused = focused;
+    sWatchFrom = SDL_GetTicksNS();
+}
+
 void Port_MusicCheckPlayback(u64 now, u64 since);
 
 void Port_AudioCheckPlayback(void) {
     u64 now = SDL_GetTicksNS(), last;
     SDL_AudioStream *stream;
     u32 rate;
+    int opening, failed;
 
     static int off = -1;
 
     if (off < 0) {
         off = SDL_getenv("DD64_NO_AUDIO_RECOVERY") != NULL; /* the old behaviour, for comparison */
     }
-    if (!sForeground || off) {
+    if (!sForeground || !sFocused || off) {
         return;
     }
     SDL_LockMutex(sLock);
     stream = sStream;
     rate = sRate;
+    opening = sOpening;
+    failed = sOpenFailed;
     last = SDL_max(sTakenNs, SDL_max(sOpenedNs, sWatchFrom));
     SDL_UnlockMutex(sLock);
     Port_MusicCheckPlayback(now, sWatchFrom);
-    if (rate == 0) {
-        return; /* the game has not set up its audio yet */
+    if (rate == 0 || opening) {
+        return; /* the game has not set up its audio yet, or an open is under way */
     }
     if (stream == NULL) {
+        if (!failed) {
+            return;
+        }
         if (now >= sNextRetry) {
             Port_Log("audio: no playback device; trying to open one again");
             openStream(rate, 1);

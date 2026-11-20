@@ -40,6 +40,8 @@
 enum { TRACK_NONE, TRACK_OGG, TRACK_MP3 };
 
 static SDL_Mutex *sLock;
+static SDL_Mutex *sOutLock; /* sOut made and destroyed by the game thread or the watchdog, one at a time
+                               (not sLock: the device callback holds it, so destroying under it would wait forever) */
 static SDL_AudioStream *sOut;
 static int sKind;
 static stb_vorbis *sOgg;
@@ -261,6 +263,7 @@ void Port_MusicCheckPlayback(u64 now, u64 since) {
     }
     Port_Log("music: the track's stream stopped playing; opening it again");
     retryAt = now + 1000000000ull;
+    SDL_LockMutex(sOutLock);
     if (sOut != NULL) {
         SDL_DestroyAudioStream(sOut);
     }
@@ -269,6 +272,7 @@ void Port_MusicCheckPlayback(u64 now, u64 since) {
     if (sOut != NULL) {
         SDL_ResumeAudioStreamDevice(sOut);
     }
+    SDL_UnlockMutex(sOutLock);
 }
 
 /* Res_LoadSoundBank is starting the song whose sequence is at `rom` in the ROM */
@@ -277,6 +281,7 @@ void Port_MusicStart(u32 rom) {
 
     if (sLock == NULL) {
         sLock = SDL_CreateMutex();
+        sOutLock = SDL_CreateMutex();
     }
     dumpOpen(rom);
     SDL_LockMutex(sLock);
@@ -290,11 +295,13 @@ void Port_MusicStart(u32 rom) {
         openTrack(path, TRACK_MP3);
     }
     SDL_UnlockMutex(sLock);
+    SDL_LockMutex(sOutLock);
     if (sKind == TRACK_NONE) {
         Port_Log("music: song_%08X (the game's)", rom);
         if (sOut != NULL) {
             SDL_PauseAudioStreamDevice(sOut);
         }
+        SDL_UnlockMutex(sOutLock);
         return;
     }
     Port_Log("music: song_%08X from %s (%d Hz, %d channel%s)", rom, path, sRate, sChannels, sChannels > 1 ? "s" : "");
@@ -305,12 +312,14 @@ void Port_MusicStart(u32 rom) {
     sOut = openOut();
     if (sOut == NULL) {
         Port_Log("music: no audio stream: %s", SDL_GetError());
+        SDL_UnlockMutex(sOutLock);
         SDL_LockMutex(sLock);
         closeTrack();
         SDL_UnlockMutex(sLock);
         return;
     }
     SDL_ResumeAudioStreamDevice(sOut);
+    SDL_UnlockMutex(sOutLock);
 }
 
 /* Sound_SetVolume on the music's key: the volume (0-128) to give it. Returns what
