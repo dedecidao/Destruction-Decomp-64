@@ -41,6 +41,9 @@ s32 Port_MusicSetVolume(s32 vol);
 void Port_MusicFadeOut(s32 frames);
 int Port_MusicReplaced(void);
 void Port_MusicDumpSamples(const void *samples, u32 bytes, u32 rate);
+/* The audio playback watchdog (port/src/audio.c), on the main thread */
+void Port_AudioSetForeground(int foreground);
+void Port_AudioCheckPlayback(void);
 uint32_t Port_HostToN64(const void *p);
 void Port_BlockLoaded(void *dst, u32 size);
 

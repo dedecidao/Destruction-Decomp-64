@@ -141,8 +141,9 @@ typedef struct {
 static const char *const kRendererNames[] = { "opengl", "sdlgpu", NULL };
 
 /* A setting's default: the PC's, or on Android the phone's (DOCS_ANDROID_PORT.md,
-   phase 3: 720p output and 3D, 2x MSAA with the N64 AA, three-point filtering, 16x
-   anisotropy, x16 draw distance, Vulkan, no HUD boxes, intros skipped) */
+   20/11 round: 720p output and 3D, vsync, 2x MSAA with the N64 AA, bilinear filtering,
+   4x anisotropy, x8 draw distance, Vulkan, no HUD boxes, intros skipped; the 16x/x16
+   defaults dropped frames to 55 fps on a Galaxy S23 Ultra) */
 #ifdef __ANDROID__
 #define DEF(pc, android) (android)
 #else
@@ -163,14 +164,14 @@ static const Setting sSettings[] = {
       " 2 = drawn ahead of the newest frame (no added lag); 0 = off (max_fps 30 then runs the game at 30, as the N64 often did)" },
     { "video", "msaa", &gPortConfig.msaa, DEF(4, 2), "Multisample anti-aliasing: 1 (off), 2, 4 or 8" },
     { "video", "n64_aa", &gPortConfig.n64AA, DEF(0, 1), "1 = resolve anti-aliasing the way the N64 did (softer)" },
-    { "video", "anisotropy", &gPortConfig.anisotropy, DEF(1, 16), "Anisotropic filtering: 1 (off) to 16" },
+    { "video", "anisotropy", &gPortConfig.anisotropy, DEF(1, 4), "Anisotropic filtering: 1 (off) to 16" },
     { "video", "internal_height", &gPortConfig.internalHeight, DEF(0, 720),
       "Lines the game is drawn at: 0 = the window's, 240 = the N64's" },
     { "video", "show_fps", &gPortConfig.showFps, 1, "1 = frames per second in the top left corner" },
     { "video", "widescreen", &gPortConfig.widescreen, 1,
       "1 = a wide window shows more of the 3D view, unstretched, with the HUD and menus 4:3 in the middle" },
     { "video", "stretch", &gPortConfig.stretch, 0, "0 = keep 4:3 with side bars, 1 = stretch to the window" },
-    { "video", "texture_filter", &gPortConfig.textureFilter, DEF(1, 2), "0 = nearest, 1 = bilinear, 2 = three-point (N64)" },
+    { "video", "texture_filter", &gPortConfig.textureFilter, DEF(1, 1), "0 = nearest, 1 = bilinear, 2 = three-point (N64)" },
     { "video", "hud_boxes", &gPortConfig.hudBoxes, DEF(1, 0),
       "1 = the dark capsules behind the race HUD's score, time and cars left, as the N64; 0 = the numbers alone" },
     { "video", "hd_fonts", &gPortConfig.hdFonts, DEF(1, 0),
@@ -183,7 +184,7 @@ static const Setting sSettings[] = {
     { "video", "edge_fill", &gPortConfig.edgeFill, DEF(0, 1),
       "1 = see-through texels take their neighbours' colour, so filtered cut-outs (trees) have no dark edge;"
       " 0 = as the N64" },
-    { "video", "draw_distance", &gPortConfig.drawDistance, DEF(1, 16),
+    { "video", "draw_distance", &gPortConfig.drawDistance, DEF(1, 8),
       "1 = as the N64; 2, 4, 8 or 16 = the scenery drawn that many times further out, and the fog"
       " (Swamp, Glacier) with it" },
     { "video", "renderer", &gPortConfig.renderer, DEF(0, 1),
@@ -206,6 +207,9 @@ static const Setting sSettings[] = {
     { "input", "analog_pedals", &gPortConfig.analogPedals, 1,
       "1 = the right trigger is the gas and the left the brake, by how far they are pressed"
       " (the triggers no longer press Z and R)" },
+    { "input", "touch_arrows", &gPortConfig.touchArrows, 0,
+      "Android: 1 = the on-screen controls steer with arrows (a d-pad) instead of the analog stick;"
+      " read when the game starts (the launcher has the same switch)" },
     { "input", "keyboard_player", &gPortConfig.keyboardPlayer, 1, "Controller the keyboard drives: 1-4, 0 = none" },
     { "input", "raphnet", &gPortConfig.raphnet, 1,
       "1 = read raphnet N64 adapters raw: real stick values, no dead zone, the Rumble Pak driven directly" },
@@ -250,11 +254,11 @@ static const Setting sSettings[] = {
  * player's own adjustments kept here (volume, rumble strength, the dead zones, the
  * pedals, cheats and saves). Bump it whenever the Android defaults change.
  */
-#define ANDROID_CONFIG_VERSION 2
+#define ANDROID_CONFIG_VERSION 3
 
 static int keepOnUpgrade(const char *section, const char *key) {
     static const char *const keep[] = { "volume", "rumble_strength", "deadzone", "stick_range", "camera_deadzone",
-                                        "analog_pedals", NULL };
+                                        "analog_pedals", "touch_arrows", NULL };
     int i;
 
     if (SDL_strcasecmp(section, "cheats") == 0 || SDL_strcasecmp(section, "saves") == 0) {

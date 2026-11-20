@@ -81,6 +81,13 @@ void Port_PumpEvents(void) {
             case SDL_EVENT_GAMEPAD_REMOVED:
                 Port_InputGamepadRemoved(e.gdevice.which);
                 break;
+            case SDL_EVENT_WILL_ENTER_BACKGROUND:
+            case SDL_EVENT_DID_ENTER_BACKGROUND:
+                Port_AudioSetForeground(0); /* the audio watchdog rests (audio.c) */
+                break;
+            case SDL_EVENT_DID_ENTER_FOREGROUND:
+                Port_AudioSetForeground(1);
+                break;
             case SDL_EVENT_KEY_DOWN:
                 if (Port_InputCaptureEvent(&e)) {
                     break;
@@ -97,4 +104,5 @@ void Port_PumpEvents(void) {
                 break;
         }
     }
+    Port_AudioCheckPlayback();
 }

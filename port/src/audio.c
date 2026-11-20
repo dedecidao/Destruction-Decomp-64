@@ -220,7 +220,9 @@ void Port_AudioInit(void) {
     atexit(audioAtExit);
 }
 
-void Port_AudioSetFrequency(u32 freq) {
+static u64 sOpenedNs; /* when the stream was last opened (or tried), for the watchdog */
+
+static void openStream(u32 freq, int force) {
     SDL_AudioSpec spec;
     u32 ms = (u32)SDL_clamp(gPortConfig.audioLatency, 20, 1000);
 
@@ -229,7 +231,8 @@ void Port_AudioSetFrequency(u32 freq) {
     /* The device thread holds SDL's device lock while pullFromRing waits for sLock,
        so the stream is closed and opened outside sLock */
     SDL_LockMutex(sLock);
-    if (sStream != NULL && sRate == freq) {
+    sOpenedNs = SDL_GetTicksNS();
+    if (!force && sStream != NULL && sRate == freq) {
         SDL_UnlockMutex(sLock);
         return;
     }
@@ -275,6 +278,82 @@ void Port_AudioSetFrequency(u32 freq) {
     sStream = stream;
     SDL_UnlockMutex(sLock);
     SDL_ResumeAudioStreamDevice(stream);
+}
+
+void Port_AudioSetFrequency(u32 freq) {
+    openStream(freq, 0);
+}
+
+/*
+ * Playback watchdog (the same fix as Yakumo's, for the same Android behaviour).
+ * SDL plays through a low-latency (MMAP) AAudio stream, which Android can take away
+ * from the app while it is in the background: another app's sound (a call, a
+ * message) is enough on a Galaxy S23 Ultra. Back in the foreground SDL restarts the
+ * stolen stream, AAudio answers AAUDIO_ERROR_DISCONNECTED, and SDL only logs it: its
+ * recovery runs from AAudio's error callback, which does not fire for a stream
+ * stolen while paused, so the game stayed silent. The open itself can fail the same
+ * way ("no output device ... running silent"), which silenced a whole session.
+ *
+ * Here: while the game is in the foreground, a device that has not asked for sound
+ * for 500 ms gets its stream closed and opened again, and a stream that could not be
+ * opened is tried again after 1 s, doubling up to 30 s. Leaving the foreground
+ * stops the checks and coming back gives the device its 500 ms first (SDL's own
+ * restart normally takes about 150 ms). Checked on the main thread (events.c), each
+ * host frame; the replacement music's stream is checked the same way (music.c).
+ */
+#define WATCH_STALL_NS 500000000ull
+#define WATCH_RETRY_MIN_NS 1000000000ull
+#define WATCH_RETRY_MAX_NS 30000000000ull
+
+static int sForeground = 1;
+static u64 sWatchFrom;                       /* the checks count from here (foreground, open) */
+static u64 sRetryWait = WATCH_RETRY_MIN_NS, sNextRetry;
+
+void Port_AudioSetForeground(int foreground) {
+    sForeground = foreground;
+    sWatchFrom = SDL_GetTicksNS();
+    sRetryWait = WATCH_RETRY_MIN_NS;
+    sNextRetry = 0;
+}
+
+void Port_MusicCheckPlayback(u64 now, u64 since);
+
+void Port_AudioCheckPlayback(void) {
+    u64 now = SDL_GetTicksNS(), last;
+    SDL_AudioStream *stream;
+    u32 rate;
+
+    static int off = -1;
+
+    if (off < 0) {
+        off = SDL_getenv("DD64_NO_AUDIO_RECOVERY") != NULL; /* the old behaviour, for comparison */
+    }
+    if (!sForeground || off) {
+        return;
+    }
+    SDL_LockMutex(sLock);
+    stream = sStream;
+    rate = sRate;
+    last = SDL_max(sTakenNs, SDL_max(sOpenedNs, sWatchFrom));
+    SDL_UnlockMutex(sLock);
+    Port_MusicCheckPlayback(now, sWatchFrom);
+    if (rate == 0) {
+        return; /* the game has not set up its audio yet */
+    }
+    if (stream == NULL) {
+        if (now >= sNextRetry) {
+            Port_Log("audio: no playback device; trying to open one again");
+            openStream(rate, 1);
+            sNextRetry = now + sRetryWait;
+            sRetryWait = SDL_min(sRetryWait * 2, WATCH_RETRY_MAX_NS);
+        }
+        return;
+    }
+    sRetryWait = WATCH_RETRY_MIN_NS;
+    if (now - last > WATCH_STALL_NS) {
+        Port_Log("audio: playback stopped while running; reopening the device");
+        openStream(rate, 1);
+    }
 }
 
 /* The game hands a buffer of s16 stereo samples (N64 byte order in RAM) to the AI. */

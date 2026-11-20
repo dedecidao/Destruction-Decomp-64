@@ -121,6 +121,7 @@ static const char *const kDroneCarN[] = { "default", "car 1", "car 2", "car 3", 
                                           "bonus car 5", "bonus car 6", "bonus car 7", "bonus car 8",
                                           "bonus car 9", "bonus car 10", "bonus car 11", "bonus car 12" };
 static const int kPaks[] = { 0, 1 };
+static const char *const kSteerN[] = { "analog stick", "arrows" };
 static const char *const kPaksN[] = { "player 1 only", "every player" };
 
 #ifndef __ANDROID__
@@ -218,6 +219,9 @@ static const Option kControls[] = {
     /* { "right stick camera", &gPortConfig.freeCamera, kOffOn, kOffOnN, N(kOffOn), 0, 0 }, forced on (config.c) */
     { "camera dead zone", &gPortConfig.cameraDeadzone, kDeadzone, kDeadzoneN, N(kDeadzone), 0, 0 },
     { "analog pedals", &gPortConfig.analogPedals, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    /* the touch controls are drawn in Java (TouchControlsView), which reads this when the
+       game starts: hence "restart" */
+    { "touch steering", &gPortConfig.touchArrows, kOffOn, kSteerN, N(kOffOn), 0, 1 },
     /* { "keyboard drives", ... }, { "raphnet adapter", ... }, { "controller paks", ... }:
        not on a phone (config.c keeps them off) */
 };

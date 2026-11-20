@@ -50,6 +50,7 @@ static u32 sSong;            /* the current song's ROM address */
 static float sGameVol = 1.0f; /* the game's volume for its music, 0-1 */
 static float sFade = 1.0f;    /* 1, down to 0 while fading out */
 static float sFadeStep;       /* per sample frame */
+static u64 sFedNs;            /* when the device last asked for the track (the watchdog, audio.c) */
 
 /* ---- Dump ---- */
 static FILE *sDump;
@@ -167,6 +168,7 @@ static void SDLCALL feed(void *userdata, SDL_AudioStream *stream, int additional
     (void)userdata;
     (void)total;
     SDL_LockMutex(sLock);
+    sFedNs = SDL_GetTicksNS();
     while (additional > 0 && sKind != TRACK_NONE) {
         int frames = SDL_min((int)(sizeof(buf) / sizeof(buf[0])) / sChannels, additional / (2 * sChannels));
         int got, i;
@@ -236,10 +238,42 @@ static int openTrack(const char *path, int kind) {
     return 1;
 }
 
+static SDL_AudioStream *openOut(void) {
+    SDL_AudioSpec spec;
+
+    spec.format = SDL_AUDIO_S16;
+    spec.channels = sChannels;
+    spec.freq = sRate;
+    return SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, feed, NULL);
+}
+
+/* The audio watchdog (audio.c), on the main thread: a track playing whose stream
+   the device stopped asking for (taken by Android while in the background) gets it
+   opened again */
+void Port_MusicCheckPlayback(u64 now, u64 since) {
+    static u64 retryAt;
+
+    if (sLock == NULL || sKind == TRACK_NONE || sFadeStep > 0.0f) {
+        return;
+    }
+    if (now - SDL_max(sFedNs, since) <= 500000000ull || now < retryAt) {
+        return;
+    }
+    Port_Log("music: the track's stream stopped playing; opening it again");
+    retryAt = now + 1000000000ull;
+    if (sOut != NULL) {
+        SDL_DestroyAudioStream(sOut);
+    }
+    sFedNs = now;
+    sOut = openOut();
+    if (sOut != NULL) {
+        SDL_ResumeAudioStreamDevice(sOut);
+    }
+}
+
 /* Res_LoadSoundBank is starting the song whose sequence is at `rom` in the ROM */
 void Port_MusicStart(u32 rom) {
     char path[1024];
-    SDL_AudioSpec spec;
 
     if (sLock == NULL) {
         sLock = SDL_CreateMutex();
@@ -264,13 +298,11 @@ void Port_MusicStart(u32 rom) {
         return;
     }
     Port_Log("music: song_%08X from %s (%d Hz, %d channel%s)", rom, path, sRate, sChannels, sChannels > 1 ? "s" : "");
-    spec.format = SDL_AUDIO_S16;
-    spec.channels = sChannels;
-    spec.freq = sRate;
     if (sOut != NULL) {
         SDL_DestroyAudioStream(sOut);
     }
-    sOut = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, feed, NULL);
+    sFedNs = SDL_GetTicksNS();
+    sOut = openOut();
     if (sOut == NULL) {
         Port_Log("music: no audio stream: %s", SDL_GetError());
         SDL_LockMutex(sLock);
