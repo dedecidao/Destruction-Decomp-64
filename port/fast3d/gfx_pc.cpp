@@ -320,6 +320,14 @@ static float wide_k = 1.0f;            /* 4:3 width / framebuffer width */
  * screen z, which the game uses as a depth bias (vtrans z -8 around particles and
  * skid marks, so they sit on the road instead of fighting it) */
 static float vp_z_offset;
+/* -1 while the viewport's x scale is negative: the game mirrors the world that way
+   (the mirrored events of the professional and legend classes: View_SetupSplitScreen,
+   src/auto/633F0.c, gives the view a negative width, and Gfx_SetViewport2, 19DC0.c,
+   a negative vscale[0]). The RSP applies the viewport to each vertex as it loads it
+   and tests a triangle's winding on the screen, after it: so the picture is mirrored
+   and its winding with it (the game turns G_CULL_BACK into G_CULL_FRONT for that,
+   19F90.c). Here x is mirrored at the same point, before the cull test. */
+static float vp_mirror_x = 1.0f;
 /* G_ZS_PRIM: the depth the triangle being emitted has at every pixel, on the scale
    vertices' z/w are on (NAN: its own) */
 static float emit_zprim = NAN;
@@ -1371,12 +1379,13 @@ static void gfx_sp_vertex(size_t n_vertices, size_t dest_index, const uint8_t *v
         if (scene_wide()) {
             x *= wide_k; /* perspective: widen the view (see vp_wide) */
         }
+        x *= vp_mirror_x; /* the viewport's mirror, as the RSP applies it (vp_mirror_x) */
         z += vp_z_offset * w; /* screen z = z/w * scale + translate */
         d->ox = ob[0];
         d->oy = ob[1];
         d->oz = ob[2];
         d->zoff = vp_z_offset;
-        d->wide = scene_wide();
+        d->wide = (scene_wide() ? 1 : 0) | (vp_mirror_x < 0.0f ? 2 : 0); /* bit 1: mirrored, for interpolation */
         d->slot = interp_slot(vtx - i * 16);
 
         short U = tc0 * rsp.texture_scaling_factor.s >> 16;
@@ -1497,14 +1506,17 @@ static void gfx_adjust_rect(struct XYWidthHeight *area) {
 static void gfx_calc_and_set_viewport(const uint8_t *vp) {
     float width = 2.0f * rds16(vp + 0) / 4.0f;
     float height = 2.0f * rds16(vp + 2) / 4.0f;
-    float x = rds16(vp + 8) / 4.0f - width / 2.0f;
-    float y = rds16(vp + 10) / 4.0f - height / 2.0f;
+    /* the rectangle is the centre (vtrans) plus and minus the scale's size: a
+       negative scale mirrors (vp_mirror_x), it does not move the area */
+    float x = rds16(vp + 8) / 4.0f - fabsf(width) / 2.0f;
+    float y = rds16(vp + 10) / 4.0f - fabsf(height) / 2.0f;
 
     rdp.viewport.x = (int16_t)x;
     rdp.viewport.y = (int16_t)y;
     rdp.viewport.width = (uint32_t)fabsf(width);
     rdp.viewport.height = (uint32_t)fabsf(height);
     rdp.viewport_or_scissor_changed = true;
+    vp_mirror_x = width < 0.0f ? -1.0f : 1.0f; /* a mirrored view (vp_mirror_x) */
     int16_t zscale = rds16(vp + 4), ztrans = rds16(vp + 12);
     vp_z_offset = zscale != 0 ? (float)ztrans / zscale : 0.0f;
 }
@@ -3334,8 +3346,11 @@ extern "C" bool gfx_interp_present(bool black) {
             float y = v.ox * m[0][1] + v.oy * m[1][1] + v.oz * m[2][1] + m[3][1];
             float z = v.ox * m[0][2] + v.oy * m[1][2] + v.oz * m[2][2] + m[3][2];
             float w = v.ox * m[0][3] + v.oy * m[1][3] + v.oz * m[2][3] + m[3][3];
-            if (v.wide) {
+            if (v.wide & 1) {
                 x *= wide_k;
+            }
+            if (v.wide & 2) {
+                x = -x; /* a mirrored view (vp_mirror_x) */
             }
             z = std::isnan(v.zprim) ? z + v.zoff * w + far[v.slot].da * w + far[v.slot].db : v.zprim * w;
             float *o = &out[k * stride];
@@ -3423,6 +3438,7 @@ void gfx_init(const struct GfxInitSettings *settings) {
     rdp.viewport = { 0, 0, NATIVE_WIDTH, NATIVE_HEIGHT };
     rdp.scissor = { 0, 0, NATIVE_WIDTH, NATIVE_HEIGHT };
     rdp.viewport_or_scissor_changed = true;
+    vp_mirror_x = 1.0f;
     update_framebuffer_sizes();
 }
 

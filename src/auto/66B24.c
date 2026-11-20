@@ -7,6 +7,17 @@ extern Voice *gVoices;
 s32 Sound_SetVolume(s32 key, s16 value) {
     s32 count; s32 i; Voice *p;
     if (key == 0) return 0;
+#ifdef TARGET_PC
+    {
+        /* the music's key (D_8011EEE0): a replacement track takes the volume, the
+           game's own song plays silent under it (port/src/music.c) */
+        extern s32 D_8011EEE0;
+        s32 Port_MusicSetVolume(s32 vol);
+        if (key == D_8011EEE0) {
+            value = (s16)Port_MusicSetVolume(value);
+        }
+    }
+#endif
     count = 0; i = 0; p = gVoices;
     while (i < gNumVoices) {
         if (p->key == key) {

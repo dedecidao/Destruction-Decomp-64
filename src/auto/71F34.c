@@ -1,5 +1,12 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* [audio] synth_rate (port/src/audio.c) */
+int Port_SynthRate(void);
+float Port_SynthPitchScale(void);
+s32 Port_SynthScaleSamples(s32 n);
+s32 Port_SynthScaleLowpass(s32 fc);
+#endif
 
 typedef struct {
     u8 pad[0x18];
@@ -110,6 +117,9 @@ void alFxNew(ALFx *r, ALSynConfig *c, void *hp) {
     j = 0;
     r->section_count = param[j++];
     r->length = param[j++];
+#ifdef TARGET_PC
+    r->length = Port_SynthScaleSamples(r->length); /* the delays are in samples at 22050 Hz */
+#endif
 
     r->delay = alHeapDBAlloc(0, 0, hp, r->section_count, sizeof(ALDelay));
     r->base = alHeapDBAlloc(0, 0, hp, r->length, sizeof(s16));
@@ -122,6 +132,10 @@ void alFxNew(ALFx *r, ALSynConfig *c, void *hp) {
         d = &r->delay[i];
         d->input = param[j++];
         d->output = param[j++];
+#ifdef TARGET_PC
+        d->input = Port_SynthScaleSamples(d->input);
+        d->output = Port_SynthScaleSamples(d->output);
+#endif
         d->fbcoef = param[j++];
         d->ffcoef = param[j++];
         d->gain = param[j++];
@@ -145,6 +159,9 @@ void alFxNew(ALFx *r, ALSynConfig *c, void *hp) {
             d->lp = alHeapDBAlloc(0, 0, hp, 1, sizeof(ALLowPass));
             d->lp->fstate = alHeapDBAlloc(0, 0, hp, 1, 8);
             d->lp->fc = param[j++];
+#ifdef TARGET_PC
+            d->lp->fc = Port_SynthScaleLowpass(d->lp->fc);
+#endif
             _init_lpfilter(d->lp);
         } else {
             d->lp = 0;

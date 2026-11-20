@@ -62,7 +62,8 @@ s32 Main_InitSystems(s32 pri, Cfg *cfg) {
 #ifdef TARGET_PC
     {
         extern u8 gRamEnd[]; /* where 0x80400000 is in the port's RAM image */
-        HeapInitW(&gMainHeap, cfg->x0, (s32)gRamEnd - cfg->x0);
+        s32 Port_SynthHeapSize(void); /* the top of the RAM goes to the synthesizer at 44100 Hz */
+        HeapInitW(&gMainHeap, cfg->x0, (s32)gRamEnd - Port_SynthHeapSize() - cfg->x0);
     }
 #else
     HeapInitW(&gMainHeap, cfg->x0, 0x80400000 - cfg->x0);

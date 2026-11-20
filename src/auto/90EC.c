@@ -43,6 +43,13 @@ s32 Res_LoadSoundBank(ResHdr *p) {
             while (Sound_CountPlaying(2) != 0) {
             }
             Rom_Copy(p->x4, D_80116DF8, p->x8 - p->x4);
+#ifdef TARGET_PC
+            {
+                /* a recorded track replaces the song if Data/Music has one for it */
+                void Port_MusicStart(u32 rom);
+                Port_MusicStart((u32)p->x4);
+            }
+#endif
             D_8011EEE0[0] = Seq_StartWithBank(D_80116DF8 - 25000, D_80116DF8);
             vol = D_8011EEF8->x514 * 128.0;
             Sound_SetVolume(D_8011EEE0[0], vol);

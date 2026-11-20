@@ -33,6 +33,7 @@ typedef struct {
     /* [audio] */
     int volume;              /* 0-100 */
     int audioLatency;        /* output delay, ms */
+    int synthRate;           /* the game's synthesizer: 22050 (the N64's) or 44100 */
     /* [input] */
     int rumble;              /* 0 off, 1 on */
     int rumbleStrength;      /* 0-100 */
@@ -42,6 +43,7 @@ typedef struct {
     int freeCamera;          /* the right stick turns the camera (not the C buttons) */
     int cameraDeadzone;      /* the right stick's dead zone, percent */
     int analogPedals;        /* the triggers are gas and brake, by how far they are pressed */
+    int touchArrows;         /* Android: steer with on-screen arrows instead of the analog stick */
     int raphnet;             /* read raphnet N64 adapters raw */
     int raphnetPlayer;       /* the controller the adapter's first port is, 1-4 */
     /* [game] */
@@ -50,6 +52,13 @@ typedef struct {
     int announceAllWrecks;   /* a wreck past the numbered cars-left lines: their opening, no number */
     int cpuUnlockables;      /* computer cars may drive the unlockable cars */
     int skipIntros;          /* the logos at boot pass at once: straight to the title */
+    /* [cheats] (port/src/options.c applies them: the game's own cheat flags) */
+    int cheatAllCars;        /* every car, bonus cars too (the game's code DUD) */
+    int cheatAllTracks;      /* every difficulty and with it every track (BRAD) */
+    int cheatInvincible;     /* the players' cars take no damage (BAR) */
+    int cheatNoTimeLimit;    /* the clock does not end a race (DAD) */
+    int cheatSuperRam;       /* every damage zone at 100: hits hard, takes little (LRLR) */
+    int cheatHeavyCar;       /* the players' cars 8.8 times as heavy (BALD) */
     /* [saves] */
     int pakOnAllPorts;       /* every controller has a Controller Pak, not only the first */
     int pakScreens;          /* the game's Controller Pak screens; 0 = loads and saves without them */
@@ -59,6 +68,8 @@ extern PortConfig gPortConfig;
 
 void Port_ConfigLoad(void);
 void Port_ConfigSave(void);
+/* The default of the setting stored in `field`: 1 and *out, or 0 */
+int Port_ConfigDefault(const int *field, int *out);
 /* The folder next to the executable, ending in a separator */
 const char *Port_BaseDir(void);
 

@@ -45,6 +45,52 @@
 #include "port_config.h"
 #include "port_shadow.h"
 
+/* ---- The synthesizer's rate ([audio] synth_rate) ----
+ *
+ * The N64 game mixes at 22050 Hz (src/auto/5D430.c). The libultra synthesizer
+ * takes any rate, but this game's driver sets each voice's pitch as a plain ratio
+ * (AudioVoice_UpdatePitch, 676B4.c) that assumes 22050, and the reverb's delays
+ * (alFxNew, 71F34.c) are counted in samples. At 44100 the resampler's ratio
+ * (alResampleParam, 7438C.c) is halved and the delays doubled, so the pitch and the
+ * reverb's timing stay the same while the mix keeps the samples' high frequencies
+ * (the N64 mix tops out at 11 kHz, and instruments pitched up alias below it).
+ */
+#define N64_SYNTH_RATE 22050
+
+int Port_SynthRate(void) {
+    return gPortConfig.synthRate >= 44100 ? 44100 : N64_SYNTH_RATE;
+}
+
+float Port_SynthPitchScale(void) {
+    return (float)N64_SYNTH_RATE / (float)Port_SynthRate();
+}
+
+/* Bytes of the port's RAM, below gRamEnd, given to the synthesizer's heap instead of
+   the N64's (0x35B60 at 0x800D3200, of which the game leaves 6 KB free at 22050 Hz:
+   at 44100 the output buffers and the reverb's delay line double and no longer fit).
+   0 at 22050: the N64's heap. The game's main heap ends that much lower (5C480.c). */
+s32 Port_SynthHeapSize(void) {
+    return Port_SynthRate() == N64_SYNTH_RATE ? 0 : 0x80000;
+}
+
+/* A length in samples at 22050 Hz, at the synthesizer's rate (multiples of 8, as the
+   reverb's sections need) */
+s32 Port_SynthScaleSamples(s32 n) {
+    return (s32)((s64)n * Port_SynthRate() / N64_SYNTH_RATE) & ~7;
+}
+
+/* The reverb's one-pole low-pass coefficient (0-0x7FFF) for the same cutoff at the
+   synthesizer's rate: a' = 1 - (1 - a)^(22050 / rate) */
+s32 Port_SynthScaleLowpass(s32 fc) {
+    double a = fc / 32768.0;
+
+    if (Port_SynthRate() == N64_SYNTH_RATE || fc <= 0) {
+        return fc;
+    }
+    a = 1.0 - SDL_pow(1.0 - a, (double)N64_SYNTH_RATE / Port_SynthRate());
+    return (s32)(a * 32768.0 + 0.5);
+}
+
 /* ---- The AI ---- */
 
 #define RING_BYTES (256 * 1024) /* over a second at any rate the game could ask for */
@@ -174,7 +220,29 @@ void Port_AudioInit(void) {
     atexit(audioAtExit);
 }
 
-void Port_AudioSetFrequency(u32 freq) {
+static u64 sOpenedNs;      /* when the stream was last opened (or tried), for the watchdog */
+static int sOpening;       /* an open is under way (the game thread or the watchdog) */
+static int sOpenFailed;    /* the last open found no device: the watchdog tries again */
+static SDL_Mutex *sOpenLock; /* one open at a time: two would both pull from the ring */
+
+static void openStreamLocked(u32 freq, int force);
+
+static void openStream(u32 freq, int force) {
+    if (sOpenLock == NULL) {
+        sOpenLock = SDL_CreateMutex();
+    }
+    SDL_LockMutex(sOpenLock);
+    SDL_LockMutex(sLock);
+    sOpening = 1;
+    SDL_UnlockMutex(sLock);
+    openStreamLocked(freq, force);
+    SDL_LockMutex(sLock);
+    sOpening = 0;
+    SDL_UnlockMutex(sLock);
+    SDL_UnlockMutex(sOpenLock);
+}
+
+static void openStreamLocked(u32 freq, int force) {
     SDL_AudioSpec spec;
     u32 ms = (u32)SDL_clamp(gPortConfig.audioLatency, 20, 1000);
 
@@ -183,7 +251,8 @@ void Port_AudioSetFrequency(u32 freq) {
     /* The device thread holds SDL's device lock while pullFromRing waits for sLock,
        so the stream is closed and opened outside sLock */
     SDL_LockMutex(sLock);
-    if (sStream != NULL && sRate == freq) {
+    sOpenedNs = SDL_GetTicksNS();
+    if (!force && sStream != NULL && sRate == freq) {
         SDL_UnlockMutex(sLock);
         return;
     }
@@ -214,6 +283,9 @@ void Port_AudioSetFrequency(u32 freq) {
     stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, pullFromRing, NULL);
     if (stream == NULL) {
         Port_Log("audio: no output device (%s); running silent", SDL_GetError());
+        SDL_LockMutex(sLock);
+        sOpenFailed = 1; /* the watchdog tries again (Port_AudioCheckPlayback) */
+        SDL_UnlockMutex(sLock);
         return;
     }
     {
@@ -227,8 +299,100 @@ void Port_AudioSetFrequency(u32 freq) {
     }
     SDL_LockMutex(sLock);
     sStream = stream;
+    sOpenFailed = 0;
     SDL_UnlockMutex(sLock);
     SDL_ResumeAudioStreamDevice(stream);
+}
+
+void Port_AudioSetFrequency(u32 freq) {
+    openStream(freq, 0);
+}
+
+/*
+ * Playback watchdog (the same fix as Yakumo's, for the same Android behaviour).
+ * SDL plays through a low-latency (MMAP) AAudio stream, which Android can take away
+ * from the app while it is in the background: another app's sound (a call, a
+ * message) is enough on a Galaxy S23 Ultra. Back in the foreground SDL restarts the
+ * stolen stream, AAudio answers AAUDIO_ERROR_DISCONNECTED, and SDL only logs it: its
+ * recovery runs from AAudio's error callback, which does not fire for a stream
+ * stolen while paused, so the game stayed silent. The open itself can fail the same
+ * way ("no output device ... running silent"), which silenced a whole session.
+ *
+ * Here: while the game is in the foreground with its window focused, a device that has
+ * not asked for sound
+ * for 500 ms gets its stream closed and opened again, and a stream that could not be
+ * opened is tried again after 1 s, doubling up to 30 s. Leaving the foreground
+ * stops the checks and coming back gives the device its 500 ms first (SDL's own
+ * restart normally takes about 150 ms). Checked on the main thread (events.c), each
+ * host frame; the replacement music's stream is checked the same way (music.c).
+ */
+#define WATCH_STALL_NS 500000000ull
+#define WATCH_RETRY_MIN_NS 1000000000ull
+#define WATCH_RETRY_MAX_NS 30000000000ull
+
+static int sForeground = 1, sFocused = 1;
+static u64 sWatchFrom;                       /* the checks count from here (foreground, focus, open) */
+static u64 sRetryWait = WATCH_RETRY_MIN_NS, sNextRetry;
+
+void Port_AudioSetForeground(int foreground) {
+    sForeground = foreground;
+    sWatchFrom = SDL_GetTicksNS();
+    sRetryWait = WATCH_RETRY_MIN_NS;
+    sNextRetry = 0;
+}
+
+/* The game window's focus: covered by another activity (a dialog, the app chooser)
+   Android pauses the audio while the game's loop may still run, and the device not
+   asking for sound then is not a stolen stream */
+void Port_AudioSetFocused(int focused) {
+    sFocused = focused;
+    sWatchFrom = SDL_GetTicksNS();
+}
+
+void Port_MusicCheckPlayback(u64 now, u64 since);
+
+void Port_AudioCheckPlayback(void) {
+    u64 now = SDL_GetTicksNS(), last;
+    SDL_AudioStream *stream;
+    u32 rate;
+    int opening, failed;
+
+    static int off = -1;
+
+    if (off < 0) {
+        off = SDL_getenv("DD64_NO_AUDIO_RECOVERY") != NULL; /* the old behaviour, for comparison */
+    }
+    if (!sForeground || !sFocused || off) {
+        return;
+    }
+    SDL_LockMutex(sLock);
+    stream = sStream;
+    rate = sRate;
+    opening = sOpening;
+    failed = sOpenFailed;
+    last = SDL_max(sTakenNs, SDL_max(sOpenedNs, sWatchFrom));
+    SDL_UnlockMutex(sLock);
+    Port_MusicCheckPlayback(now, sWatchFrom);
+    if (rate == 0 || opening) {
+        return; /* the game has not set up its audio yet, or an open is under way */
+    }
+    if (stream == NULL) {
+        if (!failed) {
+            return;
+        }
+        if (now >= sNextRetry) {
+            Port_Log("audio: no playback device; trying to open one again");
+            openStream(rate, 1);
+            sNextRetry = now + sRetryWait;
+            sRetryWait = SDL_min(sRetryWait * 2, WATCH_RETRY_MAX_NS);
+        }
+        return;
+    }
+    sRetryWait = WATCH_RETRY_MIN_NS;
+    if (now - last > WATCH_STALL_NS) {
+        Port_Log("audio: playback stopped while running; reopening the device");
+        openStream(rate, 1);
+    }
 }
 
 /* The game hands a buffer of s16 stereo samples (N64 byte order in RAM) to the AI. */
@@ -266,6 +430,7 @@ void Port_AudioQueue(const void *buf, u32 bytes) {
     sQueued += bytes;
     sWavBytes += sWav != NULL ? bytes : 0;
     SDL_UnlockMutex(sLock);
+    Port_MusicDumpSamples(buf, bytes, sRate); /* DD64_MUSICDUMP (port/src/music.c) */
 }
 
 /*
