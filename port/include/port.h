@@ -35,8 +35,8 @@ float Port_SynthPitchScale(void);
 s32 Port_SynthScaleSamples(s32 n);
 s32 Port_SynthScaleLowpass(s32 fc);
 s32 Port_SynthHeapSize(void);
-/* Replacement music (port/src/music.c): Data/Music/song_XXXXXXXX.ogg/.mp3 */
-void Port_MusicStart(u32 rom);
+/* Replacement music (port/src/music.c): Data/Music/{pressStart,menuSelect,song_XXXXXXXX}.{ogg,mp3,mpeg} */
+void Port_MusicStart(u32 rom, s32 resId);
 s32 Port_MusicSetVolume(s32 vol);
 void Port_MusicFadeOut(s32 frames);
 int Port_MusicReplaced(void);
