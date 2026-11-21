@@ -20,26 +20,26 @@ static void setDefaults(WMTuning *t) {
     t->smokeMaxParticles = 600;
     t->emitOnDrift = 1;
     t->emitFrontWheels = 1;
-    t->frontSlipThreshold = 0.42f;
-    t->stepDist = 3.2f;
+    t->frontSlipThreshold = 0.65f;
+    t->stepDist = 3.80f;
 
-    t->rubberFogScale = 4.2f;
-    t->rubberFogGrowth = 0.72f;
-    t->rubberFogLife = 42;
-    t->rubberFogAlpha = 235;
-    t->rubberFogLift = 0.34f;
+    t->rubberFogScale = 2.60f;
+    t->rubberFogGrowth = 0.42f;
+    t->rubberFogLife = 30;
+    t->rubberFogAlpha = 145;
+    t->rubberFogLift = 0.08f;
 
-    t->dirtScale = 3.8f;
-    t->dirtGrowth = 0.65f;
-    t->dirtLife = 36;
-    t->dirtAlpha = 240;
-    t->dirtLift = 0.42f;
+    t->dirtScale = 2.40f;
+    t->dirtGrowth = 0.36f;
+    t->dirtLife = 26;
+    t->dirtAlpha = 155;
+    t->dirtLift = 0.09f;
 
-    t->snowScale = 3.6f;
-    t->snowGrowth = 0.60f;
-    t->snowLife = 32;
-    t->snowAlpha = 228;
-    t->snowLift = 0.30f;
+    t->snowScale = 2.30f;
+    t->snowGrowth = 0.34f;
+    t->snowLife = 24;
+    t->snowAlpha = 150;
+    t->snowLift = 0.07f;
 }
 
 static int clampi(int v, int lo, int hi) {
