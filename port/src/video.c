@@ -312,6 +312,34 @@ s32 Port_UiHidden(s32 id, s32 type) {
     return 0;
 }
 
+/* The last frame the title's "press start" was drawn, and where (Ui_Draw, 5EEAC.c) */
+static struct { unsigned frame; int x, y, w, h; } sPressStart;
+static unsigned sUiFrame = 1;
+
+void Port_UiSpriteDrawn(s32 id, s32 x, s32 y, s32 w, s32 h) {
+    if (id == 36) { /* PRESS_START_SP */
+        sPressStart.frame = sUiFrame;
+        sPressStart.x = x;
+        sPressStart.y = y;
+        sPressStart.w = w;
+        sPressStart.h = h;
+    }
+}
+
+/* Port_PcMenuDraw, after the game's 2D of a frame: 1 and the "press start" box if
+   it was drawn in that frame */
+int Port_PressStartRect(int *x, int *y, int *w, int *h) {
+    int drawn = sPressStart.frame == sUiFrame;
+    sUiFrame++;
+    if (drawn) {
+        *x = sPressStart.x;
+        *y = sPressStart.y;
+        *w = sPressStart.w;
+        *h = sPressStart.h;
+    }
+    return drawn;
+}
+
 void Port_UiLogText(s32 id, const unsigned char *str, s32 x, s32 y) {
     static unsigned char seen[1024];
     if (SDL_getenv("DD64_UILOG") == NULL || id < 0 || id >= 1024 || seen[id]) {

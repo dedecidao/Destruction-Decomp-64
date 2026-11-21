@@ -148,6 +148,7 @@ static const Option kVideo[] = {
 static const Option kAudio[] = {
     { "master volume", &gPortConfig.volume, kVolume, kVolumeN, N(kVolume), 0, 0 },
     { "synth quality", &gPortConfig.synthRate, kSynth, kSynthN, N(kSynth), 0, 1 },
+    { "announcer voice", &gPortConfig.announcerVoice, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
 };
 static const Option kGame[] = {
@@ -201,6 +202,7 @@ static const Option kAdvanced[] = {
 static const Option kAudio[] = {
     { "master volume", &gPortConfig.volume, kVolume, kVolumeN, N(kVolume), 0, 0 },
     { "synth quality", &gPortConfig.synthRate, kSynth, kSynthN, N(kSynth), 0, 1 },
+    { "announcer voice", &gPortConfig.announcerVoice, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     { "audio delay", &gPortConfig.audioLatency, kLatency, kLatencyN, N(kLatency), 0, 1 },
 };
 static const Option kGame[] = {

@@ -34,6 +34,7 @@ typedef struct {
     int volume;              /* 0-100 */
     int audioLatency;        /* output delay, ms */
     int synthRate;           /* the game's synthesizer: 22050 (the N64's) or 44100 */
+    int announcerVoice;      /* the narrated lines (port/src/voices.c): 0 muted, 1 as the N64 */
     /* [input] */
     int rumble;              /* 0 off, 1 on */
     int rumbleStrength;      /* 0-100 */
