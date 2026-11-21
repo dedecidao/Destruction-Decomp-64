@@ -244,6 +244,22 @@ static const Setting sSettings[] = {
       "1 = every controller has a Controller Pak; 0 = only controller 1" },
     { "saves", "pak_screens", &gPortConfig.pakScreens, 0,
       "0 = load and save without the Controller Pak screens; 1 = the N64's screens" },
+    { "dev", "hud_tb_vectors", &gPortConfig.devHudBars, 1,
+      "1 = show blue T (throttle) and red B (brake) vector bars next to the MPH/damage meter" },
+    { "dev", "brake_force", &gPortConfig.devBrakeForce, 100,
+      "Normal brake longitudinal force percent (100 = 1.00x N64, 50-250)" },
+    { "dev", "brake_bite", &gPortConfig.devBrakeBite, 100,
+      "Normal brake wheel deceleration rate percent (100 = 1.00x N64, 40-300)" },
+    { "dev", "brake_lock_spd", &gPortConfig.devBrakeLock, 10,
+      "Wheel angular speed (rad/s) below which normal brake locks wheel to zero (10 = N64, 0-30)" },
+    { "dev", "brake_lat_grip", &gPortConfig.devBrakeLatGrip, 100,
+      "Lateral tire grip percent while normal braking (100 = 1.00x N64, 50-150)" },
+    { "dev", "hb_rear_grip", &gPortConfig.devHbrakeGrip, 55,
+      "Handbrake rear lateral grip percent (55 = 0.55x N64; lower = more oversteer/drift, 15-100)" },
+    { "dev", "hb_drag", &gPortConfig.devHbrakeDrag, 100,
+      "Handbrake longitudinal slowing force percent (100 = 1.00x N64; lower = keep speed, 25-250)" },
+    { "dev", "hb_slip_thr", &gPortConfig.devHbrakeSlip, 10,
+      "Handbrake skid threshold x10 (10 = 1.0 N64, 5-100)" },
 };
 
 #ifdef __ANDROID__
@@ -261,7 +277,8 @@ static int keepOnUpgrade(const char *section, const char *key) {
                                         "analog_pedals", "touch_arrows", NULL };
     int i;
 
-    if (SDL_strcasecmp(section, "cheats") == 0 || SDL_strcasecmp(section, "saves") == 0) {
+    if (SDL_strcasecmp(section, "cheats") == 0 || SDL_strcasecmp(section, "saves") == 0 ||
+        SDL_strcasecmp(section, "dev") == 0) {
         return 1;
     }
     for (i = 0; keep[i] != NULL; i++) {
@@ -293,6 +310,14 @@ static const struct {
     { &gPortConfig.analogPedals, 0, 1 },   /* the triggers are Z and R, as an N64 pad */
     { &gPortConfig.freeCamera, 0, 1 },     /* the right stick is the C buttons */
     { &gPortConfig.touchArrows, 0, 1 },    /* the on-screen N64 controller, stick and four C */
+    { &gPortConfig.devHudBars, 0, 1 },     /* no custom HUD T/B vectors in Fidelity */
+    { &gPortConfig.devBrakeForce, 100, 1 },
+    { &gPortConfig.devBrakeBite, 100, 1 },
+    { &gPortConfig.devBrakeLock, 10, 1 },
+    { &gPortConfig.devBrakeLatGrip, 100, 1 },
+    { &gPortConfig.devHbrakeGrip, 55, 1 },
+    { &gPortConfig.devHbrakeDrag, 100, 1 },
+    { &gPortConfig.devHbrakeSlip, 10, 1 },
 };
 
 static void applyFidelity(int defaults) {

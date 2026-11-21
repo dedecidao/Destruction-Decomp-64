@@ -6,12 +6,22 @@
 #include "common.h"
 #include "wm_mod.h"
 
+typedef struct { u32 w0; u32 w1; } WMGfx;
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { f32 m[4][4]; } Mtx;
 typedef struct { u8 pad[0x10]; f32 x10; } WMScaleInfo;
 typedef struct { u8 pad[0xC]; WMScaleInfo *xC; } WMTrackInfo;
 typedef struct { u8 pad[0x70]; WMTrackInfo *x70; } WMRace;
-typedef struct { u8 pad[0x1100]; WMRace *x1100; } WMGame;
+typedef struct {
+    u8 pad0[0xC];
+    s16 mode;
+    u8 padE[0x10FC - 0xE];
+    s16 x10FC;
+    u8 pad10FE[2];
+    WMRace *x1100;
+} WMGame;
+
+typedef struct { u8 x0; u8 x1; u8 x2; u8 x3; s16 x4; } WMCarInput;
 
 typedef struct {
     u8 pad0[0x194];
@@ -31,9 +41,12 @@ typedef struct {
     u8 wrecked;
     u8 padE[2];
     s32 health;         /* offset 0x10 */
-    u8 pad14[0x30 - 0x14];
+    u8 pad14[0x2C - 0x14];
+    WMCarInput *carInput;
     s32 isAi;
-    u8 pad34[0x364 - 0x34];
+    u8 pad34[0x3C - 0x34];
+    void *playerInfo;
+    u8 pad40[0x364 - 0x40];
     WMWheel wheels[4];
     u8 padA54[0xA60 - 0xA54];
     f32 allWheelsAirTime;
@@ -55,6 +68,11 @@ typedef struct {
     u8 pad2[0x224 - 0x02];
     WMSkidTri *tris;    /* 0x224 (40 entries) */
 } WMSkidMgr;
+
+typedef struct {
+    void *x0;
+    u8 pad4[0x64];
+} WMPlayerSlot; /* size 0x68 */
 
 typedef struct WMParticle {
     struct WMParticle *next;
@@ -100,6 +118,12 @@ extern s32 D_800958A8;
 extern s8 D_800D31CC;
 extern WMGame *gGame;
 extern u8 *D_801245A4;
+extern WMPlayerSlot D_800958F0[];
+
+s32 Port_GameDrawsWorld(void);
+void Port_OptMenuPad(u16 *buttons, s8 *x, s8 *y);
+f32 Port_InputGas(s32 channel);
+f32 Port_InputBrake(s32 channel);
 
 void Vec3f_Set(Vec3f *, f32, f32, f32);
 void Vec3f_Sub(Vec3f *, Vec3f *, Vec3f *);
@@ -651,4 +675,209 @@ void WM_SkidColorAlpha(int surface, int life, unsigned char *r, unsigned char *g
         alpha = (life * maxAlpha) / 26;
     }
     *a = (unsigned char)alpha;
+}
+
+/* ---- Live brake & handbrake physics tuning helpers (human player cars only) ---- */
+
+static int wmIsHumanCar(void *carPtr) {
+    return carPtr != NULL && ((WMCar *)carPtr)->isAi == 0;
+}
+
+f32 WM_BrakeForceScale(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_BrakeForceMult() : 1.0f;
+}
+
+f32 WM_BrakeBiteScale(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_BrakeBiteMult() : 1.0f;
+}
+
+f32 WM_BrakeLockThreshold(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_BrakeLockThresholdVal() : 10.0f;
+}
+
+f32 WM_BrakeLatGripScale(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_BrakeLatGripMult() : 1.0f;
+}
+
+f32 WM_HandbrakeLatGrip(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_HandbrakeGripVal() : 0.55f;
+}
+
+f32 WM_HandbrakeLonDrag(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_HandbrakeDragMult() : 1.0f;
+}
+
+f32 WM_HandbrakeSlipThreshold(void *carPtr) {
+    return wmIsHumanCar(carPtr) ? WM_HandbrakeSlipVal() : 1.0f;
+}
+
+/* ---- HUD Throttle (T, blue) & Brake (B, red) vector bars ---- */
+
+#define WM_GFX2(g, a, b) do { WMGfx *_g = (g)++; _g->w0 = (u32)(a); _g->w1 = (u32)(b); } while (0)
+
+static WMGfx *wmBeginRects(WMGfx *g) {
+    WM_GFX2(g, 0xE7000000, 0);
+    WM_GFX2(g, 0xE3000A01, 0);          /* one cycle */
+    WM_GFX2(g, 0xE200001C, 0x0F0A4000); /* blended overlay surface */
+    WM_GFX2(g, 0xFCFFFFFF, 0xFFFDF6FB); /* output = primitive color + alpha */
+    return g;
+}
+
+static WMGfx *wmRect(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, u32 rgba) {
+    if (x1 <= x0 || y1 <= y0) {
+        return g;
+    }
+    WM_GFX2(g, 0xFA000000, rgba);
+    WM_GFX2(g, 0xF6000000 | (((u32)(x1 * 4) & 0xFFFU) << 12) | ((u32)(y1 * 4) & 0xFFFU),
+               (((u32)(x0 * 4) & 0xFFFU) << 12) | ((u32)(y0 * 4) & 0xFFFU));
+    return g;
+}
+
+static WMGfx *wmDrawFrame(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, u32 rgba) {
+    g = wmRect(g, x0, y0, x1, y0 + 1, rgba);
+    g = wmRect(g, x0, y1 - 1, x1, y1, rgba);
+    g = wmRect(g, x0, y0 + 1, x0 + 1, y1 - 1, rgba);
+    g = wmRect(g, x1 - 1, y0 + 1, x1, y1 - 1, rgba);
+    return g;
+}
+
+static WMGfx *wmDrawGlyphT(WMGfx *g, s32 x, s32 y, u32 rgba) {
+    g = wmRect(g, x + 1, y + 1, x + 9, y + 3, 0x000000D0);
+    g = wmRect(g, x + 4, y + 3, x + 6, y + 10, 0x000000D0);
+    g = wmRect(g, x, y, x + 8, y + 2, rgba);
+    g = wmRect(g, x + 3, y + 2, x + 5, y + 9, rgba);
+    return g;
+}
+
+static WMGfx *wmDrawGlyphBParts(WMGfx *g, s32 x, s32 y, u32 rgba) {
+    g = wmRect(g, x, y, x + 2, y + 9, rgba);
+    g = wmRect(g, x + 2, y, x + 6, y + 2, rgba);
+    g = wmRect(g, x + 6, y + 1, x + 8, y + 4, rgba);
+    g = wmRect(g, x + 2, y + 4, x + 6, y + 5, rgba);
+    g = wmRect(g, x + 6, y + 5, x + 8, y + 8, rgba);
+    g = wmRect(g, x + 2, y + 7, x + 6, y + 9, rgba);
+    return g;
+}
+
+static WMGfx *wmDrawGlyphB(WMGfx *g, s32 x, s32 y, u32 rgba) {
+    g = wmDrawGlyphBParts(g, x + 1, y + 1, 0x000000D0);
+    return wmDrawGlyphBParts(g, x, y, rgba);
+}
+
+static WMGfx *wmDrawVectorBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val,
+                              u32 bgRgba, u32 borderRgba, u32 fillRgba, u32 capRgba) {
+    s32 innerH = (y1 - 2) - (y0 + 2);
+    s32 quarter = innerH / 4;
+    s32 fillH;
+
+    if (val < 0.0f) {
+        val = 0.0f;
+    } else if (val > 1.0f) {
+        val = 1.0f;
+    }
+    g = wmRect(g, x0 + 1, y0 + 1, x1 - 1, y1 - 1, bgRgba);
+    g = wmDrawFrame(g, x0, y0, x1, y1, borderRgba);
+
+    g = wmRect(g, x0 + 2, y0 + 2 + quarter, x1 - 2, y0 + 2 + quarter + 1, 0xFFFFFF28);
+    g = wmRect(g, x0 + 2, y0 + 2 + quarter * 2, x1 - 2, y0 + 2 + quarter * 2 + 1, 0xFFFFFF38);
+    g = wmRect(g, x0 + 2, y0 + 2 + quarter * 3, x1 - 2, y0 + 2 + quarter * 3 + 1, 0xFFFFFF28);
+
+    if (val > 0.005f) {
+        s32 fillTop;
+        s32 capBottom;
+        fillH = (s32)(val * (f32)innerH + 0.5f);
+        if (fillH < 2) {
+            fillH = 2;
+        } else if (fillH > innerH) {
+            fillH = innerH;
+        }
+        fillTop = (y1 - 2) - fillH;
+        capBottom = fillTop + 2;
+        if (capBottom > y1 - 2) {
+            capBottom = y1 - 2;
+        }
+        g = wmRect(g, x0 + 2, fillTop, x1 - 2, y1 - 2, fillRgba);
+        g = wmRect(g, x0 + 2, fillTop, x1 - 2, capBottom, capRgba);
+    }
+    return g;
+}
+
+static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
+    if (target > cur) {
+        cur += (target - cur) * riseRate + 0.025f;
+        if (cur > target) {
+            cur = target;
+        }
+    } else if (target < cur) {
+        cur -= (cur - target) * fallRate + 0.03f;
+        if (cur < target) {
+            cur = target;
+        }
+    }
+    return cur;
+}
+
+void *WM_HudDraw(void *gfxPtr) {
+    static f32 sSmoothT, sSmoothB;
+    WMGfx *g = (WMGfx *)gfxPtr;
+    WMCar *car;
+    u16 btn = 0;
+    s8 sx = 0, sy = 0;
+    s32 ch = 0;
+    f32 rawT = 0.0f, rawB = 0.0f;
+    int handbrake = 0;
+
+    if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
+        sSmoothT = 0.0f;
+        sSmoothB = 0.0f;
+        return gfxPtr;
+    }
+    if (gGame->x10FC != 0x1B && gGame->x10FC != 0x1C) {
+        if (gGame->x10FC != 0x1F && gGame->x10FC != 0x20) {
+            sSmoothT = 0.0f;
+            sSmoothB = 0.0f;
+        }
+        return gfxPtr;
+    }
+
+    car = (WMCar *)D_800958F0[0].x0;
+    if (car == NULL || car->wrecked) {
+        sSmoothT = 0.0f;
+        sSmoothB = 0.0f;
+        return gfxPtr;
+    }
+
+    if (car->isAi == 0 && car->playerInfo != NULL) {
+        ch = *(s8 *)((u8 *)car->playerInfo + 0x10);
+    } else {
+        ch = -1;
+    }
+
+    Port_OptMenuPad(&btn, &sx, &sy);
+    if ((btn & 0x8000) || (car->carInput != NULL && car->carInput->x0 && !car->carInput->x3)) {
+        rawT = ch >= 0 ? Port_InputGas(ch) : 1.0f;
+    }
+    if ((btn & 0x4000) || (car->carInput != NULL && car->carInput->x1)) {
+        rawB = ch >= 0 ? Port_InputBrake(ch) : 1.0f;
+    }
+    if ((btn & 0x0010) || (car->carInput != NULL && car->carInput->x2)) {
+        handbrake = 1;
+        if (rawB < 1.0f) {
+            rawB = 1.0f;
+        }
+    }
+
+    sSmoothT = stepSmoothBar(sSmoothT, rawT, 0.28f, 0.30f);
+    sSmoothB = stepSmoothBar(sSmoothB, rawB, 0.34f, 0.32f);
+
+    /* Positioned directly left of the MPH / car damage gauge, clear of Z/B/A touch controls */
+    g = wmBeginRects(g);
+    g = wmDrawVectorBar(g, 228, 122, 240, 170, sSmoothT,
+                        0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
+    g = wmDrawVectorBar(g, 243, 122, 255, 170, sSmoothB,
+                        0x180608B8, handbrake ? 0xFFA228F0 : 0xFF5252E0, 0xF52828FF, 0xFF9A80FF);
+    g = wmDrawGlyphT(g, 230, 173, 0x62C2FFFF);
+    g = wmDrawGlyphB(g, 245, 173, 0xFF5858FF);
+    WM_GFX2(g, 0xE7000000, 0);
+    return g;
 }

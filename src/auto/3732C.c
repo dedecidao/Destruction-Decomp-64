@@ -97,6 +97,7 @@ static inline f32 tireF(f32 v, f32 a, f32 b, f32 load) {
 }
 
 #ifdef TARGET_PC
+#include "wm_mod.h"
 f32 Port_CarDrive(void *car, s32 reversing);
 f32 Port_CarBrake(void *car);
 #endif
@@ -190,7 +191,11 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
     }
     if (p2) {
         sp2 = vt.x * vt.x + vt.y * vt.y + vt.z * vt.z;
+#ifdef TARGET_PC
+        if (sp2 > WM_HandbrakeSlipThreshold(car)) {
+#else
         if (sp2 > 1.0) {
+#endif
             w->x1AC = 1;
             w->x1B4 = 1;
             w->x1B0 = ramp(sp2, 1.0f, 120.0f);
@@ -201,8 +206,14 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
     load = load * N.y;
     fl = tireF(lon, w->x1A4, w->x1A0, load);
     if (p2) {
+#ifdef TARGET_PC
+        f32 hg = WM_HandbrakeLatGrip(car);
+        a = w->x1A4 * hg;
+        b = w->x1A0 * hg;
+#else
         a = w->x1A4 * 0.55;
         b = w->x1A0 * 0.55;
+#endif
         ft = tireF(lat, a, b, load);
     } else if (idx >= 2) {
         f32 g = w->x1B8 * 0.45 + 0.55;
@@ -222,6 +233,14 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
     }
     fl *= car->xB84;
     ft *= car->xB84;
+#ifdef TARGET_PC
+    if (p2) {
+        fl *= WM_HandbrakeLonDrag(car);
+    } else if (p1) {
+        fl *= WM_BrakeForceScale(car);
+        ft *= WM_BrakeLatGripScale(car);
+    }
+#endif
     if (p0 && !p2) {
         f32 q;
         f32 fx;
@@ -269,16 +288,20 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
         res.y = fx * side.y + ft * fwd.y;
         res.z = fx * side.z + ft * fwd.z;
     } else {
+#ifdef TARGET_PC
+        if (p2 || (p1 && fabs(ws->xC4) < WM_BrakeLockThreshold(car))) {
+#else
         if (p2 || (p1 && fabs(ws->xC4) < 10.0)) {
+#endif
             *out = 0.0f;
             ws->xC4 = 0.0f;
         } else if (p1) {
             *out = 0.0f;
 #ifdef TARGET_PC
             if (ws->xC4 > *out) {
-                ws->xC4 = ws->xC4 - car->xB88 * 1.4 * Port_CarBrake(car);
+                ws->xC4 = ws->xC4 - car->xB88 * 1.4 * Port_CarBrake(car) * WM_BrakeBiteScale(car);
             } else {
-                ws->xC4 = ws->xC4 + car->xB88 * 1.4 * Port_CarBrake(car);
+                ws->xC4 = ws->xC4 + car->xB88 * 1.4 * Port_CarBrake(car) * WM_BrakeBiteScale(car);
             }
 #else
             if (ws->xC4 > *out) {

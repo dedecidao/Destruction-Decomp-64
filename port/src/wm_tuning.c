@@ -258,3 +258,56 @@ int WM_SmokePoolMax(void) {
     WM_ReloadTuning();
     return WM_Enabled() ? sTuning.smokeMaxParticles : 0xC8;
 }
+
+int WM_HudBarsEnabled(void) {
+    return !gPortConfig.fidelity && gPortConfig.devHudBars != 0;
+}
+
+float WM_BrakeForceMult(void) {
+    if (gPortConfig.fidelity) {
+        return 1.0f;
+    }
+    return clampi(gPortConfig.devBrakeForce, 50, 250) * 0.01f;
+}
+
+float WM_BrakeBiteMult(void) {
+    if (gPortConfig.fidelity) {
+        return 1.0f;
+    }
+    return clampi(gPortConfig.devBrakeBite, 40, 300) * 0.01f;
+}
+
+float WM_BrakeLockThresholdVal(void) {
+    if (gPortConfig.fidelity) {
+        return 10.0f;
+    }
+    return (float)clampi(gPortConfig.devBrakeLock, 0, 30);
+}
+
+float WM_BrakeLatGripMult(void) {
+    if (gPortConfig.fidelity) {
+        return 1.0f;
+    }
+    return clampi(gPortConfig.devBrakeLatGrip, 50, 150) * 0.01f;
+}
+
+float WM_HandbrakeGripVal(void) {
+    if (gPortConfig.fidelity) {
+        return 0.55f;
+    }
+    return clampi(gPortConfig.devHbrakeGrip, 15, 100) * 0.01f;
+}
+
+float WM_HandbrakeDragMult(void) {
+    if (gPortConfig.fidelity) {
+        return 1.0f;
+    }
+    return clampi(gPortConfig.devHbrakeDrag, 25, 250) * 0.01f;
+}
+
+float WM_HandbrakeSlipVal(void) {
+    if (gPortConfig.fidelity) {
+        return 1.0f;
+    }
+    return clampi(gPortConfig.devHbrakeSlip, 5, 100) * 0.1f;
+}
