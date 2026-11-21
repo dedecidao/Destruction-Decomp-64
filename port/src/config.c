@@ -195,6 +195,9 @@ static const Setting sSettings[] = {
       " (instruments pitched up no longer alias), same pitch and reverb. Takes effect at the next start" },
     { "audio", "latency", &gPortConfig.audioLatency, 80,
       "Output delay in milliseconds (N64: about 20); raise it if the sound stutters" },
+    { "audio", "announcer_voice", &gPortConfig.announcerVoice, 0,
+      "1 = the announcer's voice lines, as the N64; 0 = muted (sound effects and music stay)."
+      " voice_keep = line ids still heard, e.g. 0xED 0xD2 (docs/AUDIO_HOOKS.md)" },
     { "input", "rumble", &gPortConfig.rumble, 1, "1 = Rumble Pak on every controller that can rumble" },
     { "input", "rumble_strength", &gPortConfig.rumbleStrength, 100, "0-100" },
     { "input", "deadzone", &gPortConfig.deadzone, 12, "Stick dead zone, percent of full tilt" },
@@ -307,6 +310,7 @@ static const struct {
     { &gPortConfig.seamlessSky, 0, 0 },
     { &gPortConfig.edgeFill, 0, 0 },       /* cut-outs with the N64's dark edges */
     { &gPortConfig.synthRate, 22050, 0 },  /* the N64's synthesizer rate */
+    { &gPortConfig.announcerVoice, 1, 1 }, /* the announcer, as the N64 */
     { &gPortConfig.analogPedals, 0, 1 },   /* the triggers are Z and R, as an N64 pad */
     { &gPortConfig.freeCamera, 0, 1 },     /* the right stick is the C buttons */
     { &gPortConfig.touchArrows, 0, 1 },    /* the on-screen N64 controller, stick and four C */

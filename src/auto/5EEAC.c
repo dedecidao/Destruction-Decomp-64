@@ -110,6 +110,13 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
                 Bg_SetScale(b->x18, b->x78, b->x7C, 0);
             }
             Sprite_SetSize(b->x18, b->x80, b->x84, b->x88 * b->x78, b->x8C * b->x7C);
+#ifdef TARGET_PC
+            {
+                /* where a sprite was drawn this frame (the title's credit line, pcmenu.c) */
+                void Port_UiSpriteDrawn(s32 id, s32 x, s32 y, s32 w, s32 h);
+                Port_UiSpriteDrawn(*(s32 *)e, b->x80, b->x84, b->x88 * b->x78, b->x8C * b->x7C);
+            }
+#endif
             g = Bg_Draw(b->x18, g, 0);
             break;
         }

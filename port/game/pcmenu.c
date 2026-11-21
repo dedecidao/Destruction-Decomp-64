@@ -321,6 +321,28 @@ static void input(void) {
     }
 }
 
+/* Wrecked Metal: the replacement music's credit, under the title's "press start",
+   in the menus' own font, white with the game's drop shadow. The title loads no
+   text of its own, so the font is the last one the menus had */
+static Gfx *drawTitleCredit(Gfx *g) {
+    static Font *sFont;
+    static const char kCredit[] = "Music By Domgalegone";
+    int Port_PressStartRect(int *x, int *y, int *w, int *h);
+    int WM_Enabled(void);
+    Font *f = menuFont();
+    int x, y, w, h;
+
+    if (f != NULL) {
+        sFont = f;
+    }
+    if (!Port_PressStartRect(&x, &y, &w, &h) || !WM_Enabled() || sFont == NULL) {
+        return g;
+    }
+    x = x + w / 2 - textWidth(sFont, kCredit) / 2;
+    y = y + h + 4;
+    return drawLabel(g, sFont, x, y, kCredit, WHITE);
+}
+
 Gfx *Port_PcMenuDraw(Gfx *g) {
     Font *f;
     s32 i, x, y, n;
@@ -332,6 +354,7 @@ Gfx *Port_PcMenuDraw(Gfx *g) {
        black, as the N64's overscan. The options and records screens reached from
        pause cover the race but for their edges, which the N64's overscan hid: the
        race is not drawn behind them. */
+    g = drawTitleCredit(g);
     gfx_scene_4x3 = !Port_GameDrawsWorld();
     gfx_scene_hidden = gGame != NULL && (gGame->mode == MODE_OPTIONS || gGame->mode == MODE_RECORDS);
     if (gGame == NULL ||

@@ -48,6 +48,15 @@ void Sound_PlayVoice(void *obj, Vec3f pos, s32 id) {
     Vec3f zero = D_800B7F20;
     s64 *t;
 
+#ifdef TARGET_PC
+    {
+        /* [audio] announcer_voice and the voice hooks (port/src/voices.c) */
+        s32 Port_VoicePlay(s32 id);
+        if (!Port_VoicePlay(id)) {
+            return;
+        }
+    }
+#endif
     req.x0 = 0x3F4;
     req.x4 = 0;
     req.x2 = Obj_NextId();
