@@ -31,6 +31,10 @@ void Particles_EmitAlongSegment(void *, Vec3f *, Vec3f *, Vec3f, f32, f32, s32, 
 void Skid_Start(void *);
 void Skid_Stop(void *);
 
+#ifdef TARGET_PC
+#include "wm_mod.h"
+#endif
+
 void Car_EmitWheelDust(Car *car, void *a, void *b)
 {
     Vec3f p1;
@@ -39,6 +43,11 @@ void Car_EmitWheelDust(Car *car, void *a, void *b)
     Mtx m;
     s32 i;
 
+#ifdef TARGET_PC
+    if (WM_EmitWheelDust(car, a, b)) {
+        return;
+    }
+#endif
     if (D_8012455C) {
         return;
     }
@@ -86,7 +95,11 @@ void Car_EmitWheelDust(Car *car, void *a, void *b)
             p2.x = m.m[3][0] * gGame->x1100->x70->xC->x10;
             p2.y = m.m[3][1] * gGame->x1100->x70->xC->x10;
             p2.z = m.m[3][2] * gGame->x1100->x70->xC->x10;
+#ifdef TARGET_PC
+            switch (car->wheels[3].x1A8) {
+#else
             switch (car->wheels[2].x1A8) {
+#endif
             case 0:
             case 1:
             case 2:
