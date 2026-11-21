@@ -14,7 +14,30 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 2
+#define WM_TUNING_VERSION 3 /* 3: [weather] */
+
+/*
+ * Weather per race track, by the game's track id (D_800958B4). Ids 0-3 are the
+ * arenas and never get weather. The race menu lists the tracks in the order
+ * 5 4 7 8 11 6 10 9 (the cups' order, D_80095CA8), so "track 0" for a player is
+ * id 5 (Seascape Sprint). Weights: clear, rain, storm (rain + lightning), snow.
+ */
+static const int kWeatherDefaults[12][WM_WEATHER_KINDS] = {
+    { 100, 0, 0, 0 },  /* 0 arena */
+    { 100, 0, 0, 0 },  /* 1 arena */
+    { 100, 0, 0, 0 },  /* 2 arena */
+    { 100, 0, 0, 0 },  /* 3 arena */
+    { 40, 30, 30, 0 }, /* 4  race #2: random */
+    { 40, 30, 30, 0 }, /* 5  race #1 Seascape Sprint: random */
+    { 0, 100, 0, 0 },  /* 6  race #6 (dirt canyon): always rain */
+    { 40, 30, 30, 0 }, /* 7  race #3: random */
+    { 40, 30, 30, 0 }, /* 8  race #4 (figure 8): random */
+    { 100, 0, 0, 0 },  /* 9  race #8 (desert): never rain */
+    { 0, 0, 0, 100 },  /* 10 race #7 (glacier, the N64's snow): always snow */
+    { 0, 0, 0, 100 },  /* 11 race #5 (city at night): always snow */
+};
+
+static const char *const kWeatherNames[WM_WEATHER_KINDS] = { "clear", "rain", "storm", "snow" };
 
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
@@ -45,6 +68,11 @@ static void setDefaults(WMTuning *t) {
     t->snowLife = 18;
     t->snowAlpha = 142;
     t->snowLift = 0.06f;
+
+    t->weatherRandom = 1;
+    t->weatherLayers = 3;
+    t->weatherDensity = 1.0f;
+    memcpy(t->weatherChance, kWeatherDefaults, sizeof(t->weatherChance));
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -102,6 +130,21 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "snow_life = %d\n", t->snowLife);
     fprintf(f, "snow_alpha = %d\n", t->snowAlpha);
     fprintf(f, "snow_lift = %.2f\n", t->snowLift);
+    fprintf(f, "\n[weather]\n");
+    fprintf(f, "; random_weather = 0 gives the N64's weather (snow on the glacier only).\n");
+    fprintf(f, "; layers = 1-3 particle depths (parallax); density = particle count multiplier.\n");
+    fprintf(f, "; track_N = weights for clear rain storm snow, N = the game's track id:\n");
+    fprintf(f, ";   race menu order 5 4 7 8 11 6 10 9 (5 = Seascape Sprint); 0-3 are arenas (no weather).\n");
+    fprintf(f, "random_weather = %d\n", t->weatherRandom);
+    fprintf(f, "layers = %d\n", t->weatherLayers);
+    fprintf(f, "density = %.2f\n", t->weatherDensity);
+    {
+        int i;
+        for (i = 4; i < 12; i++) {
+            fprintf(f, "track_%d = %d %d %d %d\n", i, t->weatherChance[i][0], t->weatherChance[i][1],
+                    t->weatherChance[i][2], t->weatherChance[i][3]);
+        }
+    }
     fclose(f);
 }
 
@@ -111,6 +154,24 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->enabled = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "tuning_version") == 0) {
             t->tuningVersion = atoi(val);
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "weather") == 0) {
+        if (SDL_strcasecmp(key, "random_weather") == 0) {
+            t->weatherRandom = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "layers") == 0) {
+            t->weatherLayers = clampi(atoi(val), 1, 3);
+        } else if (SDL_strcasecmp(key, "density") == 0) {
+            t->weatherDensity = clampf((float)atof(val), 0.1f, 2.0f);
+        } else if (SDL_strncasecmp(key, "track_", 6) == 0) {
+            int id = atoi(key + 6), w[WM_WEATHER_KINDS] = { 0, 0, 0, 0 }, i;
+
+            if (id >= 4 && id < 12 && sscanf(val, "%d %d %d %d", &w[0], &w[1], &w[2], &w[3]) >= 1) {
+                for (i = 0; i < WM_WEATHER_KINDS; i++) {
+                    t->weatherChance[id][i] = clampi(w[i], 0, 1000);
+                }
+            }
         }
         return;
     }
@@ -224,7 +285,12 @@ void WM_ReloadTuning(void) {
     }
     SDL_free(data);
 
-    if (sTuning.tuningVersion < WM_TUNING_VERSION) {
+    if (sTuning.tuningVersion >= 2 && sTuning.tuningVersion < WM_TUNING_VERSION) {
+        /* v2 -> v3 only added [weather]: keep the player's values, write the new section */
+        sTuning.tuningVersion = WM_TUNING_VERSION;
+        writeDefaultIni(path, &sTuning);
+        Port_Log("wm_mod: added [weather] to %s (v%d)", path, WM_TUNING_VERSION);
+    } else if (sTuning.tuningVersion < WM_TUNING_VERSION) {
         int keepEnabled = sTuning.enabled;
         setDefaults(&sTuning);
         sTuning.enabled = keepEnabled;
@@ -310,4 +376,82 @@ float WM_HandbrakeSlipVal(void) {
         return 1.0f;
     }
     return clampi(gPortConfig.devHbrakeSlip, 5, 100) * 0.1f;
+}
+
+/* ---- Weather ---------------------------------------------------------------- */
+
+const char *WM_WeatherName(int kind) {
+    return kind >= 0 && kind < WM_WEATHER_KINDS ? kWeatherNames[kind] : "n64";
+}
+
+/* Reusable weighted roll: picks a weather kind from `chance` (weights for clear,
+   rain, storm, snow; any scale) with the xorshift state `rng` (seeded if 0).
+   All-zero weights give clear. */
+int WM_WeatherRoll(const int chance[WM_WEATHER_KINDS], unsigned int *rng) {
+    unsigned int x = *rng, total = 0, r;
+    int i;
+
+    if (x == 0) {
+        x = (unsigned int)SDL_GetPerformanceCounter() | 1u;
+    }
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    *rng = x;
+    for (i = 0; i < WM_WEATHER_KINDS; i++) {
+        total += (unsigned int)(chance[i] > 0 ? chance[i] : 0);
+    }
+    if (total == 0) {
+        return WM_WEATHER_CLEAR;
+    }
+    r = x % total;
+    for (i = 0; i < WM_WEATHER_KINDS; i++) {
+        unsigned int w = (unsigned int)(chance[i] > 0 ? chance[i] : 0);
+        if (r < w) {
+            return i;
+        }
+        r -= w;
+    }
+    return WM_WEATHER_CLEAR;
+}
+
+/* The weather for a race about to start on `track` (D_800958B4) in game type
+   `gameType` (D_800958A8; 3 = multiplayer, which the game draws no weather in).
+   WM_WEATHER_N64 = leave it to the game's code (Play Fidelity). DD64_WEATHER =
+   clear/rain/storm/snow forces a kind on race tracks (tests). */
+int WM_WeatherPick(int track, int gameType) {
+    static unsigned int sRng;
+    static int sLastTrack = -1, sLastType = -1, sLastKind;
+    static Uint64 sLastTicks;
+    const char *force = SDL_getenv("DD64_WEATHER");
+    int i;
+
+    if (!WM_Enabled()) {
+        return WM_WEATHER_N64;
+    }
+    WM_ReloadTuning(); /* edits to the ini apply from the next race */
+    if (track < 4 || track >= 12 || gameType == 3) {
+        return WM_WEATHER_CLEAR; /* arenas and arena modes: none */
+    }
+    if (force != NULL && *force != '\0') {
+        for (i = 0; i < WM_WEATHER_KINDS; i++) {
+            if (SDL_strcasecmp(force, kWeatherNames[i]) == 0) {
+                return i;
+            }
+        }
+    }
+    if (!sTuning.weatherRandom) {
+        return track == 10 ? WM_WEATHER_SNOW : WM_WEATHER_CLEAR;
+    }
+    /* The race's scene is set up twice in a row as it loads (Render_Init runs
+       Weather_Init each time): keep the first roll for that race */
+    if (track == sLastTrack && gameType == sLastType && SDL_GetTicks() - sLastTicks < 15000) {
+        sLastTicks = SDL_GetTicks();
+        return sLastKind;
+    }
+    sLastKind = WM_WeatherRoll(sTuning.weatherChance[track], &sRng);
+    sLastTrack = track;
+    sLastType = gameType;
+    sLastTicks = SDL_GetTicks();
+    return sLastKind;
 }

@@ -71,6 +71,15 @@ Gfx *Weather_Draw(Cam *cam, Gfx *gfx) {
     s32 i;
     f32 yoff;
 
+#ifdef TARGET_PC
+    {
+        int WM_WeatherActive(void);
+        void *WM_WeatherDraw(void *, void *);
+        if (WM_WeatherActive()) {
+            return WM_WeatherDraw(cam, gfx);
+        }
+    }
+#endif
     if (D_8008F820) {
         return gfx;
     }
