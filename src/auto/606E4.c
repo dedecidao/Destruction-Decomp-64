@@ -50,6 +50,7 @@ void Fb_InitContext(void *, s32, void *, void *, void *);
 void func_80056578(void *, s32);
 Gfx *Gfx_EndDisplayList(Gfx *);
 #ifdef TARGET_PC
+void *WM_HudDraw(void *);
 Gfx *Port_PcMenuDraw(Gfx *);
 #endif
 u32 HeapBlock_Size(HeapBlock *);
@@ -115,7 +116,8 @@ void Render_Frame(Renderer *r) {
     }
     gfx = func_8005D580(gUi, gfx);
 #ifdef TARGET_PC
-    gfx = Port_PcMenuDraw(gfx); /* the PC options page, over the game's menus */
+    gfx = (Gfx *)WM_HudDraw(gfx); /* Wrecked Metal HUD throttle (T) and brake (B) vectors */
+    gfx = Port_PcMenuDraw(gfx);   /* the PC options page, over the game's menus */
 #endif
     gfx = Gfx_EndDisplayList(gfx);
     osWritebackDCache(HeapBlock_Ptr(&r->x178[r->xC]), HeapBlock_Size(&r->x178[r->xC]));

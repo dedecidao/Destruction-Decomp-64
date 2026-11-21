@@ -64,6 +64,15 @@ typedef struct {
     /* [saves] */
     int pakOnAllPorts;       /* every controller has a Controller Pak, not only the first */
     int pakScreens;          /* the game's Controller Pak screens; 0 = loads and saves without them */
+    /* [dev] Wrecked Metal HUD vectors & live brake/handbrake physics tuning */
+    int devHudBars;          /* 1 = show blue Throttle (T) and red Brake (B) vector bars on race HUD */
+    int devBrakeForce;       /* normal brake longitudinal force % (100 = 1.00x N64) */
+    int devBrakeBite;        /* normal brake wheel deceleration step % (100 = 1.00x N64) */
+    int devBrakeLock;        /* normal brake wheel lock threshold in rad/s (10 = N64) */
+    int devBrakeLatGrip;     /* normal brake lateral grip multiplier % (100 = 1.00x N64) */
+    int devHbrakeGrip;       /* handbrake rear lateral grip % (55 = 0.55x N64) */
+    int devHbrakeDrag;       /* handbrake longitudinal drag % (100 = 1.00x N64) */
+    int devHbrakeSlip;       /* handbrake skid threshold x10 (10 = 1.0 N64) */
 } PortConfig;
 
 extern PortConfig gPortConfig;

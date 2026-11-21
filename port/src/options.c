@@ -238,6 +238,56 @@ static const Option kCheats[] = {
     { "heavy car", &gPortConfig.cheatHeavyCar, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
 };
 
+/* Wrecked Metal live physics & HUD tuning (dev page, hidden in Play Fidelity) */
+static const int kBrakeForce[] = { 50, 65, 80, 90, 100, 110, 120, 130, 140, 150, 165, 180, 200, 225, 250 };
+static const char *const kBrakeForceN[] = {
+    "50% (0.50x)",  "65% (0.65x)",  "80% (0.80x)",  "90% (0.90x)",  "100% (1.00x n64)",
+    "110% (1.10x)", "120% (1.20x)", "130% (1.30x)", "140% (1.40x)", "150% (1.50x)",
+    "165% (1.65x)", "180% (1.80x)", "200% (2.00x)", "225% (2.25x)", "250% (2.50x)",
+};
+static const int kBrakeBite[] = { 40, 60, 80, 100, 125, 150, 175, 200, 250, 300 };
+static const char *const kBrakeBiteN[] = {
+    "40% (0.40x)",  "60% (0.60x)",  "80% (0.80x)",  "100% (1.00x n64)", "125% (1.25x)",
+    "150% (1.50x)", "175% (1.75x)", "200% (2.00x)", "250% (2.50x)",     "300% (3.00x)",
+};
+static const int kBrakeLock[] = { 0, 2, 4, 6, 8, 10, 12, 15, 18, 22, 26, 30 };
+static const char *const kBrakeLockN[] = {
+    "0 (no lock)", "2 rad/s",  "4 rad/s",  "6 rad/s",  "8 rad/s",  "10 (n64)",
+    "12 rad/s",    "15 rad/s", "18 rad/s", "22 rad/s", "26 rad/s", "30 rad/s",
+};
+static const int kBrakeLatGrip[] = { 50, 65, 75, 85, 95, 100, 110, 120, 135, 150 };
+static const char *const kBrakeLatGripN[] = {
+    "50% (0.50x)",  "65% (0.65x)",  "75% (0.75x)",      "85% (0.85x)",  "95% (0.95x)",
+    "100% (1.00x n64)", "110% (1.10x)", "120% (1.20x)", "135% (1.35x)", "150% (1.50x)",
+};
+static const int kHbrakeGrip[] = { 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100 };
+static const char *const kHbrakeGripN[] = {
+    "15% (0.15x)", "20% (0.20x)", "25% (0.25x)", "30% (0.30x)",
+    "35% (0.35x)", "40% (0.40x)", "45% (0.45x)", "50% (0.50x)",
+    "55% (0.55x n64)", "60% (0.60x)", "65% (0.65x)", "70% (0.70x)",
+    "75% (0.75x)", "80% (0.80x)", "90% (0.90x)", "100% (1.00x)",
+};
+static const int kHbrakeDrag[] = { 25, 40, 50, 65, 75, 85, 100, 115, 130, 150, 175, 200, 250 };
+static const char *const kHbrakeDragN[] = {
+    "25% (0.25x)",  "40% (0.40x)",  "50% (0.50x)",  "65% (0.65x)",      "75% (0.75x)",
+    "85% (0.85x)",  "100% (1.00x n64)", "115% (1.15x)", "130% (1.30x)", "150% (1.50x)",
+    "175% (1.75x)", "200% (2.00x)", "250% (2.50x)",
+};
+static const int kHbrakeSlip[] = { 5, 10, 20, 35, 50, 75, 100 };
+static const char *const kHbrakeSlipN[] = {
+    "0.5 (early)", "1.0 (n64)", "2.0", "3.5", "5.0", "7.5", "10.0 (late)",
+};
+static const Option kDev[] = {
+    { "hud t/b vectors", &gPortConfig.devHudBars, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
+    { "brake force", &gPortConfig.devBrakeForce, kBrakeForce, kBrakeForceN, N(kBrakeForce), 0, 0 },
+    { "brake bite", &gPortConfig.devBrakeBite, kBrakeBite, kBrakeBiteN, N(kBrakeBite), 0, 0 },
+    { "brake lock spd", &gPortConfig.devBrakeLock, kBrakeLock, kBrakeLockN, N(kBrakeLock), 0, 0 },
+    { "brake lat grip", &gPortConfig.devBrakeLatGrip, kBrakeLatGrip, kBrakeLatGripN, N(kBrakeLatGrip), 0, 0 },
+    { "hb rear grip", &gPortConfig.devHbrakeGrip, kHbrakeGrip, kHbrakeGripN, N(kHbrakeGrip), 0, 0 },
+    { "hb drag", &gPortConfig.devHbrakeDrag, kHbrakeDrag, kHbrakeDragN, N(kHbrakeDrag), 0, 0 },
+    { "hb slip thr", &gPortConfig.devHbrakeSlip, kHbrakeSlip, kHbrakeSlipN, N(kHbrakeSlip), 0, 0 },
+};
+
 static SDL_AtomicInt sApplyVideo, sSave; /* for the main thread */
 static int sCaptureRow;
 
@@ -261,6 +311,7 @@ static const Page kPages[] = {
     /* keys and pad: hidden on Android (touch controls and gamepads work as they are) */
 #endif
     { "cheats", kCheats, N(kCheats), 0 },
+    { "dev", kDev, N(kDev), 0 },
 };
 
 #ifdef __ANDROID__
@@ -339,7 +390,11 @@ static int choice(const Option *o) {
 }
 
 int Port_OptPages(void) {
-    return N(kPages);
+#ifdef __ANDROID__
+    return gPortConfig.fidelity ? N(kPagesFidelity) : N(kPages);
+#else
+    return gPortConfig.fidelity ? N(kPages) - 1 : N(kPages);
+#endif
 }
 
 const char *Port_OptPageName(int page) {

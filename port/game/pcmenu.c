@@ -76,8 +76,8 @@ s32 Port_GameDrawsWorld(void); /* port/game/gfxstate.c */
 #define MODE_OPTIONS 0x20
 #define ROWS 7      /* rows shown at once */
 #define ROW_H 13
-#define PANEL_X0 22
-#define PANEL_X1 298
+#define PANEL_X0 14
+#define PANEL_X1 306
 #define PANEL_Y0 82
 #define PANEL_Y1 230
 
@@ -334,7 +334,8 @@ Gfx *Port_PcMenuDraw(Gfx *g) {
        race is not drawn behind them. */
     gfx_scene_4x3 = !Port_GameDrawsWorld();
     gfx_scene_hidden = gGame != NULL && (gGame->mode == MODE_OPTIONS || gGame->mode == MODE_RECORDS);
-    if (gGame == NULL || (gGame->mode != MODE_OPTIONS && gGame->mode != MODE_MAIN)) {
+    if (gGame == NULL ||
+        (gGame->mode != MODE_OPTIONS && gGame->mode != MODE_MAIN && gGame->mode != MODE_PAUSE)) {
         if (Port_OptIsOpen()) {
             Port_OptSetOpen(0);
         }
@@ -372,7 +373,10 @@ Gfx *Port_PcMenuDraw(Gfx *g) {
             total += textWidth(f, Port_OptPageName(i));
         }
         gap = pages > 1 ? (PANEL_X1 - PANEL_X0 - 20 - total) / (pages - 1) : 0;
-        gap = gap > 12 ? 12 : gap < 3 ? 3 : gap;
+        gap = gap > 12 ? 12 : gap < 2 ? 2 : gap;
+        if (sPage >= pages) {
+            sPage = 0;
+        }
         x = PANEL_X0 + 10 + (PANEL_X1 - PANEL_X0 - 20 - total - gap * (pages - 1)) / 2;
         for (i = 0; i < pages; i++) {
             g = drawLabel(g, f, x, PANEL_Y0 + 4, Port_OptPageName(i), i == sPage ? YELLOW : GREEN);
