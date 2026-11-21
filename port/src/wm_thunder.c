@@ -86,24 +86,42 @@ void WM_ThunderPlay(float dist) {
     attack = 0.01f + dist * 0.25f;
     cut = 0.03f + (1.0f - dist) * 0.12f; /* one-pole low-pass: far thunder loses its highs */
     crack = (1.0f - dist) * (1.0f - dist);
-    for (i = 0; i < n; i++) {
-        float t = (float)i / RATE, w = noise(), env, s;
+    {
+        /* the decays step by a constant factor per sample: no expf in the loop
+           (this runs on the game thread when a strike lands) */
+        float body = 1.0f, bodyK = expf(-1.0f / (RATE * decay));
+        int on[6];
+        float roll[6], rollK = expf(-1.0f / (RATE * (0.25f + dist * 0.4f)));
+        float crk = crack, crackK = expf(-1.0f / (RATE * 0.05f));
 
-        brown = brown * 0.996f + w * 0.05f;
-        lp1 += (w - lp1) * cut;
-        lp2 += (lp1 - lp2) * cut;
-        env = expf(-t / decay);
         for (k = 0; k < rolls; k++) {
-            if (t > tk[k]) {
-                env += ak[k] * expf(-(t - tk[k]) / (0.25f + dist * 0.4f));
-            }
+            roll[k] = 0.0f;
+            on[k] = 0;
         }
-        env *= t < attack ? t / attack : 1.0f;
-        env *= t > SECONDS - 0.5f ? (SECONDS - t) / 0.5f : 1.0f;
-        s = (lp2 * 4.0f + brown * 1.2f) * env + crack * expf(-t / 0.05f) * w * 0.8f;
-        buf[i] = s;
-        if (fabsf(s) > peak) {
-            peak = fabsf(s);
+        for (i = 0; i < n; i++) {
+            float t = (float)i / RATE, w = noise(), env, s;
+
+            brown = brown * 0.996f + w * 0.05f;
+            lp1 += (w - lp1) * cut;
+            lp2 += (lp1 - lp2) * cut;
+            env = body;
+            body *= bodyK;
+            for (k = 0; k < rolls; k++) {
+                if (!on[k] && t > tk[k]) {
+                    roll[k] = ak[k];
+                    on[k] = 1;
+                }
+                env += roll[k];
+                roll[k] *= rollK;
+            }
+            env *= t < attack ? t / attack : 1.0f;
+            env *= t > SECONDS - 0.5f ? (SECONDS - t) / 0.5f : 1.0f;
+            s = (lp2 * 4.0f + brown * 1.2f) * env + crk * w * 0.8f;
+            crk *= crackK;
+            buf[i] = s;
+            if (fabsf(s) > peak) {
+                peak = fabsf(s);
+            }
         }
     }
     gain = peak > 0.0f ? (0.9f - dist * 0.55f) / peak : 0.0f;
