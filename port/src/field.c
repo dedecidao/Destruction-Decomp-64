@@ -21,6 +21,10 @@ static s32 sPoolScale = 1;
    drones setting then times the N64's, which a race's cars stay within */
 s32 Port_FieldPoolScale(void) {
     sPoolScale = SDL_clamp(gPortConfig.drones, 1, 10);
+    if (!gPortConfig.fidelity && sPoolScale < 3) {
+        /* Reserve room in gParticlePool for denser Wrecked Metal smoke/dust clouds */
+        sPoolScale = 3;
+    }
     return sPoolScale;
 }
 

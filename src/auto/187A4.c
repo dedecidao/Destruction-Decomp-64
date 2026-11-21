@@ -20,6 +20,10 @@ typedef struct {
 extern Grid *D_800BC9C4;
 s32 Poly_ClipToPlane(Vec3f *, Vec3f *, s32, Plane *, f32);
 
+#ifdef TARGET_PC
+#include "wm_mod.h"
+#endif
+
 void Skid_ClipPolys(Mgr *m, s32 *ids, s32 n) {
     s32 i;
     s32 k;
@@ -59,7 +63,12 @@ void Skid_ClipPolys(Mgr *m, s32 *ids, s32 n) {
             m->x224[m->x228].v[1] = first[k + 1];
             m->x224[m->x228].v[2] = first[k + 2];
             m->x224[m->x228].x0 = 1;
+#ifdef TARGET_PC
+            m->x224[m->x228].x28 = WM_SkidClipLife();
+            WM_SkidTagSurface(m, &m->x224[m->x228]);
+#else
             m->x224[m->x228].x28 = 20;
+#endif
             m->x228++;
             if (m->x228 >= 40) {
                 m->x228 = 0;
