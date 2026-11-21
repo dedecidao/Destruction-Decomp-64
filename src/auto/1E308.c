@@ -131,6 +131,7 @@ extern u8 D_80124360;
 extern Model D_80125C68;
 extern s32 D_800D1C20[];
 #ifdef TARGET_PC
+#include "wm_mod.h"
 void Port_Field0SetCarType(s32 index, s32 type);
 #endif
 
@@ -270,6 +271,12 @@ Car *Car_Create(CarStats *s) {
             break;
         }
     }
+#ifdef TARGET_PC
+    if (car->x30 == 1 && WM_CanInitAiSkid()) {
+        Skid_InitMgr(&car->xB78);
+        Skid_InitMgr(&car->xB7C);
+    }
+#endif
     if (car->xBE3) {
         s->xB0 = s->x78 * 8.8;
         s->xB4 = 0.25f;

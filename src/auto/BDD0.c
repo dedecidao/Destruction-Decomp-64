@@ -65,9 +65,22 @@ Gfx *Skid_ReserveGfx(void *, Gfx *);
 void Skid_Draw(void *);
 void Obj_EmitPositionedDL(void *);
 
+#ifdef TARGET_PC
+#include "wm_mod.h"
+#endif
+
 static inline void UpdateWheels(Car *car, f32 m[4][4])
 {
     f32 tmp[4][4];
+#ifdef TARGET_PC
+    s32 i;
+    for (i = 0; i < 4; i++) {
+        if (car->xB70[i] != NULL && WM_SkidShouldUpdate(car->xB70[i])) {
+            Mtx_FromRotPos(tmp, m, car, i, 1);
+            Skid_Update(car->xB70[i], m, tmp);
+        }
+    }
+#else
     if (car->xB70[0]) {
         Mtx_FromRotPos(tmp, m, car, 0, 1);
         Skid_Update(car->xB70[0], m, tmp);
@@ -78,6 +91,7 @@ static inline void UpdateWheels(Car *car, f32 m[4][4])
         Mtx_FromRotPos(tmp, m, car, 3, 1);
         Skid_Update(car->xB70[3], m, tmp);
     }
+#endif
 }
 
 static inline void EmitTrail(Car *car)
@@ -153,6 +167,20 @@ Gfx *Car_Draw(Car *car, Gfx *gfx, s32 unused, Cam *cam)
             }
             gfx = Gfx_SetViewport2(Debris_UpdateDraw(car, gfx), -2);
             gfx = DrawParticle(car, gfx, m18);
+#ifdef TARGET_PC
+            if (!car->xD) {
+                s32 i;
+                for (i = 0; i < 4; i++) {
+                    if (car->xB70[i] != NULL && WM_SkidShouldDraw(car->xB70[i])) {
+                        gfx = Skid_ReserveGfx(car->xB70[i], gfx);
+                        if (!D_8012455C) {
+                            Skid_Draw(car->xB70[i]);
+                        }
+                        Obj_EmitPositionedDL(car->xB70[i]);
+                    }
+                }
+            }
+#else
             if (!car->xD && car->xB70[0]) {
                 g = Skid_ReserveGfx(car->xB70[0], gfx);
                 g = Skid_ReserveGfx(car->xB70[1], g);
@@ -170,6 +198,7 @@ Gfx *Car_Draw(Car *car, Gfx *gfx, s32 unused, Cam *cam)
                 Obj_EmitPositionedDL(car->xB70[2]);
                 Obj_EmitPositionedDL(car->xB70[3]);
             }
+#endif
             gfx = Gfx_SetViewport2(gfx, 0);
         }
     }

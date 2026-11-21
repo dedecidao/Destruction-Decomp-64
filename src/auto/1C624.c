@@ -54,6 +54,7 @@ extern s32 D_800958A8;
 extern s32 D_800958AC;
 extern s32 D_800958B4;
 #ifdef TARGET_PC
+#include "wm_mod.h"
 #define D_800D1C20 gFieldCarIds /* RACE_CARS long (port/game/field_part0.c) */
 #endif
 extern s32 D_800D1C20[];
@@ -178,20 +179,25 @@ void Car_UpdateWreck(Car *car) {
                 Ai_OnCarWrecked(car);
             }
         } else if (car->x10 < 21) {
-            Vec3f p;
-            Vec3f v = { 0.0f, 4.0f, 0.0f };
-            s32 r1 = (rand() & 7) - 3;
-            s32 r2 = rand() % 12 - 6;
-            p.x = pos.x + m[0][0] * 15.0f;
-            p.y = pos.y + m[0][1] * 15.0f;
-            p.z = pos.z + m[0][2] * 15.0f;
-            p.x = p.x - m[0][0] * r1 - m[2][0] * r2;
-            p.y = p.y - m[0][1] * r1 - m[2][1] * r2;
-            p.z = p.z - m[0][2] * r1 - m[2][2] * r2;
-            if (car->x10 <= 0) {
-                func_80016F48(D_801245A4 + 0xB0, p, v, 8.0f, 0.3f, 9 - D_800D31CC);
-            } else {
-                Fx_SpawnParticlesMode(D_801245A4 + 0xB0, p, v, 8.0f, 0.3f, 9 - D_800D31CC, 0xBE, 0);
+#ifdef TARGET_PC
+            if (!WM_EmitHoodSmoke(car, &pos, m))
+#endif
+            {
+                Vec3f p;
+                Vec3f v = { 0.0f, 4.0f, 0.0f };
+                s32 r1 = (rand() & 7) - 3;
+                s32 r2 = rand() % 12 - 6;
+                p.x = pos.x + m[0][0] * 15.0f;
+                p.y = pos.y + m[0][1] * 15.0f;
+                p.z = pos.z + m[0][2] * 15.0f;
+                p.x = p.x - m[0][0] * r1 - m[2][0] * r2;
+                p.y = p.y - m[0][1] * r1 - m[2][1] * r2;
+                p.z = p.z - m[0][2] * r1 - m[2][2] * r2;
+                if (car->x10 <= 0) {
+                    func_80016F48(D_801245A4 + 0xB0, p, v, 8.0f, 0.3f, 9 - D_800D31CC);
+                } else {
+                    Fx_SpawnParticlesMode(D_801245A4 + 0xB0, p, v, 8.0f, 0.3f, 9 - D_800D31CC, 0xBE, 0);
+                }
             }
         }
         if (D_800D31CC < 3 && car->x30 == 0) {

@@ -14,32 +14,37 @@
 static WMTuning sTuning;
 static int sInitialized;
 
+#define WM_TUNING_VERSION 2
+
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
+    t->tuningVersion = WM_TUNING_VERSION;
 
-    t->smokeMaxParticles = 600;
+    t->smokeMaxParticles = 280;
     t->emitOnDrift = 1;
     t->emitFrontWheels = 1;
-    t->frontSlipThreshold = 0.65f;
-    t->stepDist = 3.80f;
+    t->frontSlipThreshold = 0.72f;
+    t->frontWheelScale = 0.30f;
+    t->aiSmokeScale = 0.80f;
+    t->stepDist = 5.20f;
 
-    t->rubberFogScale = 2.60f;
-    t->rubberFogGrowth = 0.42f;
-    t->rubberFogLife = 30;
-    t->rubberFogAlpha = 145;
-    t->rubberFogLift = 0.08f;
+    t->rubberFogScale = 2.35f;
+    t->rubberFogGrowth = 0.30f;
+    t->rubberFogLife = 22;
+    t->rubberFogAlpha = 138;
+    t->rubberFogLift = 0.07f;
 
-    t->dirtScale = 2.40f;
-    t->dirtGrowth = 0.36f;
-    t->dirtLife = 26;
-    t->dirtAlpha = 155;
-    t->dirtLift = 0.09f;
+    t->dirtScale = 2.20f;
+    t->dirtGrowth = 0.28f;
+    t->dirtLife = 20;
+    t->dirtAlpha = 148;
+    t->dirtLift = 0.08f;
 
-    t->snowScale = 2.30f;
-    t->snowGrowth = 0.34f;
-    t->snowLife = 24;
-    t->snowAlpha = 150;
-    t->snowLift = 0.07f;
+    t->snowScale = 2.10f;
+    t->snowGrowth = 0.26f;
+    t->snowLife = 18;
+    t->snowAlpha = 142;
+    t->snowLift = 0.06f;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -72,12 +77,15 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; Wrecked Metal mod tuning (ignored in Play Fidelity mode).\n");
     fprintf(f, "; Edit on device and restart a race to iterate without recompiling.\n\n");
     fprintf(f, "[general]\n");
+    fprintf(f, "tuning_version = %d\n", t->tuningVersion);
     fprintf(f, "enabled = %d\n\n", t->enabled);
     fprintf(f, "[smoke]\n");
     fprintf(f, "smoke_max_particles = %d\n", t->smokeMaxParticles);
     fprintf(f, "emit_on_drift = %d\n", t->emitOnDrift);
     fprintf(f, "emit_front_wheels = %d\n", t->emitFrontWheels);
     fprintf(f, "front_slip_threshold = %.2f\n", t->frontSlipThreshold);
+    fprintf(f, "front_wheel_scale = %.2f\n", t->frontWheelScale);
+    fprintf(f, "ai_smoke_scale = %.2f\n", t->aiSmokeScale);
     fprintf(f, "step_dist = %.2f\n", t->stepDist);
     fprintf(f, "rubber_fog_scale = %.2f\n", t->rubberFogScale);
     fprintf(f, "rubber_fog_growth = %.2f\n", t->rubberFogGrowth);
@@ -101,6 +109,8 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
     if (SDL_strcasecmp(section, "general") == 0) {
         if (SDL_strcasecmp(key, "enabled") == 0) {
             t->enabled = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "tuning_version") == 0) {
+            t->tuningVersion = atoi(val);
         }
         return;
     }
@@ -115,6 +125,10 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
         t->emitFrontWheels = atoi(val) != 0;
     } else if (SDL_strcasecmp(key, "front_slip_threshold") == 0) {
         t->frontSlipThreshold = clampf((float)atof(val), 0.05f, 1.0f);
+    } else if (SDL_strcasecmp(key, "front_wheel_scale") == 0) {
+        t->frontWheelScale = clampf((float)atof(val), 0.10f, 1.0f);
+    } else if (SDL_strcasecmp(key, "ai_smoke_scale") == 0) {
+        t->aiSmokeScale = clampf((float)atof(val), 0.20f, 1.0f);
     } else if (SDL_strcasecmp(key, "step_dist") == 0) {
         t->stepDist = clampf((float)atof(val), 1.5f, 12.0f);
     } else if (SDL_strcasecmp(key, "rubber_fog_scale") == 0) {
@@ -174,6 +188,7 @@ void WM_ReloadTuning(void) {
         return;
     }
 
+    sTuning.tuningVersion = 0; /* detect pre-v2 wm_tuning.ini files */
     p = data;
     while (*p != '\0') {
         char line[256];
@@ -209,9 +224,20 @@ void WM_ReloadTuning(void) {
     }
     SDL_free(data);
 
-    Port_Log("wm_mod: tuning loaded (enabled=%d, smoke_max=%d, drift=%d, front=%d, step=%.1f, fog_life=%d)",
-             sTuning.enabled, sTuning.smokeMaxParticles, sTuning.emitOnDrift, sTuning.emitFrontWheels,
-             sTuning.stepDist, sTuning.rubberFogLife);
+    if (sTuning.tuningVersion < WM_TUNING_VERSION) {
+        int keepEnabled = sTuning.enabled;
+        setDefaults(&sTuning);
+        sTuning.enabled = keepEnabled;
+        writeDefaultIni(path, &sTuning);
+        Port_Log("wm_mod: upgraded %s to v%d 60fps defaults (smoke_max=%d, front=%.2f, ai=%.2f)",
+                 path, WM_TUNING_VERSION, sTuning.smokeMaxParticles, sTuning.frontWheelScale,
+                 sTuning.aiSmokeScale);
+        return;
+    }
+
+    Port_Log("wm_mod: tuning loaded (v%d, enabled=%d, smoke_max=%d, step=%.1f, front=%.2f, ai=%.2f)",
+             sTuning.tuningVersion, sTuning.enabled, sTuning.smokeMaxParticles, sTuning.stepDist,
+             sTuning.frontWheelScale, sTuning.aiSmokeScale);
 }
 
 int WM_Enabled(void) {

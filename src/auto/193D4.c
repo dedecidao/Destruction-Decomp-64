@@ -24,6 +24,10 @@ extern s8 D_800D31CC[];
 
 Gfx *func_80019050(Gfx *);
 
+#ifdef TARGET_PC
+#include "wm_mod.h"
+#endif
+
 #define GFX2(g,a,b) { Gfx *_g = (g)++; _g->w0 = (a); _g->w1 = (u32)(b); }
 
 void Skid_Draw(Ctx187D4 *c) {
@@ -64,17 +68,34 @@ void Skid_Draw(Ctx187D4 *c) {
             D_800BC9D0 = g;
             GFX2(g, 0x01020040, b->x1C);
         }
-        for (j = 0; j < 3; j++) {
-            Vtx *v = &b->x1C[D_800BC9CC];
-            v->x0 = (c->x224[i].p[j].x - c->x22C) * 32.0f;
-            v->x2 = (c->x224[i].p[j].y - c->x230) * 32.0f;
-            v->x4 = (c->x224[i].p[j].z - c->x234) * 32.0f;
-            v->x6 = 0;
-            v->xC = 0;
-            v->xD = 0;
-            v->xE = 0;
-            v->xF = (c->x224[i].x28 << 6) / 20;
-            D_800BC9CC++;
+        {
+#ifdef TARGET_PC
+            u8 sr = 0, sg = 0, sb = 0, sa = 0;
+            if (WM_Enabled()) {
+                WM_SkidColorAlpha(c->x224[i].pad1[0], c->x224[i].x28, &sr, &sg, &sb, &sa);
+            } else {
+                sa = (u8)((c->x224[i].x28 << 6) / 20);
+            }
+#endif
+            for (j = 0; j < 3; j++) {
+                Vtx *v = &b->x1C[D_800BC9CC];
+                v->x0 = (c->x224[i].p[j].x - c->x22C) * 32.0f;
+                v->x2 = (c->x224[i].p[j].y - c->x230) * 32.0f;
+                v->x4 = (c->x224[i].p[j].z - c->x234) * 32.0f;
+                v->x6 = 0;
+#ifdef TARGET_PC
+                v->xC = sr;
+                v->xD = sg;
+                v->xE = sb;
+                v->xF = sa;
+#else
+                v->xC = 0;
+                v->xD = 0;
+                v->xE = 0;
+                v->xF = (c->x224[i].x28 << 6) / 20;
+#endif
+                D_800BC9CC++;
+            }
         }
         D_800BC9CC -= 3;
         GFX2(g, 0x05000000 | (((((D_800BC9CC) * 2) & 0xFF) << 16) | ((((D_800BC9CC + 1) * 2) & 0xFF) << 8) | (((D_800BC9CC + 2) * 2) & 0xFF)), 0);

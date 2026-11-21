@@ -98,12 +98,27 @@ void Car_Destroy(Car *o) {
             if (o->xB6C) {
                 Obj_FreeSubBuffers(&o->xB6C);
             }
+#ifdef TARGET_PC
+            if (o->xB70) {
+                Skid_Free(&o->xB70);
+            }
+            if (o->xB74) {
+                Skid_Free(&o->xB74);
+            }
+            if (o->xB78) {
+                Skid_Free(&o->xB78);
+            }
+            if (o->xB7C) {
+                Skid_Free(&o->xB7C);
+            }
+#else
             if (o->xB70) {
                 Skid_Free(&o->xB70);
                 Skid_Free(&o->xB74);
                 Skid_Free(&o->xB78);
                 Skid_Free(&o->xB7C);
             }
+#endif
             if (o->xB80) {
                 func_80013174(&o->xB80);
             }
