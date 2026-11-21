@@ -5,11 +5,13 @@
  * (notes for the instruments of the game's sound banks), started by
  * Res_LoadSoundBank (src/auto/90EC.c, resource type 13), which copies it from the
  * ROM and calls Seq_StartWithBank. A song is known by where its sequence starts in
- * the ROM. When Data/Music/song_XXXXXXXX.ogg (or .mp3) exists for it, that file
- * plays instead, looping, on its own SDL audio stream: the game's song still runs
- * (its flow waits on the music voices), muted (Sound_SetVolume, 66B24.c, asks
- * Port_MusicSetVolume), and the volume the game gives it (the options' music
- * slider) and its fade-outs (Sound_FadeOutAll, 66960.c) go to the file.
+ * the ROM. In Wrecked Metal mode (!gPortConfig.fidelity), when a replacement file
+ * exists in Data/Music/ (song_XXXXXXXX, or pressStart for res 0x759E / menuSelect
+ * for res 0x75A0, as .ogg, .mp3, or .mpeg), that file plays instead, looping, on its
+ * own SDL audio stream: the game's song still runs (its flow waits on the music
+ * voices), muted (Sound_SetVolume, 66B24.c, asks Port_MusicSetVolume), and the
+ * volume the game gives it (the options' music slider) and its fade-outs
+ * (Sound_FadeOutAll, 66960.c) go to the file.
  *
  * Decoders: stb_vorbis (Ogg Vorbis) and dr_mp3, both single-file and public domain
  * (port/third_party).
@@ -278,8 +280,28 @@ void Port_MusicCheckPlayback(u64 now, u64 since) {
     SDL_UnlockMutex(sOutLock);
 }
 
-/* Res_LoadSoundBank is starting the song whose sequence is at `rom` in the ROM */
-void Port_MusicStart(u32 rom) {
+static int tryOpenStem(const char *stem, char *path, size_t pathSize) {
+    static const struct {
+        const char *ext;
+        int kind;
+    } kFormats[] = {
+        { "ogg", TRACK_OGG },
+        { "mp3", TRACK_MP3 },
+        { "mpeg", TRACK_MP3 },
+    };
+    size_t i;
+
+    for (i = 0; i < SDL_arraysize(kFormats); i++) {
+        SDL_snprintf(path, pathSize, "%sData/Music/%s.%s", Port_BaseDir(), stem, kFormats[i].ext);
+        if (openTrack(path, kFormats[i].kind)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Res_LoadSoundBank is starting the song `resId` whose sequence is at `rom` in the ROM */
+void Port_MusicStart(u32 rom, s32 resId) {
     char path[1024];
 
     if (sLock == NULL) {
@@ -292,22 +314,44 @@ void Port_MusicStart(u32 rom) {
     sSong = rom;
     sFade = 1.0f;
     sFadeStep = 0.0f;
-    SDL_snprintf(path, sizeof(path), "%sData/Music/song_%08X.ogg", Port_BaseDir(), rom);
-    if (!openTrack(path, TRACK_OGG)) {
-        SDL_snprintf(path, sizeof(path), "%sData/Music/song_%08X.mp3", Port_BaseDir(), rom);
-        openTrack(path, TRACK_MP3);
+    if (!gPortConfig.fidelity) {
+        static const struct {
+            s32 resId;
+            const char *stems[2];
+        } kAliases[] = {
+            { 0x759E, { "pressStart", "press_start" } },
+            { 0x75A0, { "menuSelect", "menu_select" } },
+        };
+        int found = 0;
+        size_t i;
+
+        for (i = 0; !found && i < SDL_arraysize(kAliases); i++) {
+            size_t j;
+            if (kAliases[i].resId != resId) {
+                continue;
+            }
+            for (j = 0; !found && j < SDL_arraysize(kAliases[i].stems); j++) {
+                found = tryOpenStem(kAliases[i].stems[j], path, sizeof(path));
+            }
+        }
+        if (!found) {
+            char songStem[32];
+            SDL_snprintf(songStem, sizeof(songStem), "song_%08X", rom);
+            tryOpenStem(songStem, path, sizeof(path));
+        }
     }
     SDL_UnlockMutex(sLock);
     SDL_LockMutex(sOutLock);
     if (sKind == TRACK_NONE) {
-        Port_Log("music: song_%08X (the game's)", rom);
+        Port_Log("music: song_%08X (res 0x%X, the game's)", rom, (unsigned)resId);
         if (sOut != NULL) {
             SDL_PauseAudioStreamDevice(sOut);
         }
         SDL_UnlockMutex(sOutLock);
         return;
     }
-    Port_Log("music: song_%08X from %s (%d Hz, %d channel%s)", rom, path, sRate, sChannels, sChannels > 1 ? "s" : "");
+    Port_Log("music: song_%08X (res 0x%X) from %s (%d Hz, %d channel%s)", rom, (unsigned)resId, path, sRate, sChannels,
+             sChannels > 1 ? "s" : "");
     if (sOut != NULL) {
         SDL_DestroyAudioStream(sOut);
     }

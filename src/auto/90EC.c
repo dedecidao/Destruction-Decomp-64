@@ -23,8 +23,9 @@ extern void ObjList_Add(s32);
 
 s32 Res_LoadSoundBank(ResHdr *p) {
     HeapBlock blk; u32 size; s32 i; s32 n; f32 vol;
+    s32 resId = (s32)p;
 
-    size = Res_GetSize((s32)p);
+    size = Res_GetSize(resId);
     if (size != 0) {
         Heap_AllocAlt(gMainHeap, &blk, size, 7, 0);
         { ResHdr *q = p; p = HeapBlock_Ptr(&blk); Res_Load((s32)q, p); }
@@ -46,8 +47,8 @@ s32 Res_LoadSoundBank(ResHdr *p) {
 #ifdef TARGET_PC
             {
                 /* a recorded track replaces the song if Data/Music has one for it */
-                void Port_MusicStart(u32 rom);
-                Port_MusicStart((u32)p->x4);
+                void Port_MusicStart(u32 rom, s32 resId);
+                Port_MusicStart((u32)p->x4, resId);
             }
 #endif
             D_8011EEE0[0] = Seq_StartWithBank(D_80116DF8 - 25000, D_80116DF8);

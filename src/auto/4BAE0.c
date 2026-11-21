@@ -27,6 +27,16 @@ s32 Records_Back(s32 arg0) {
         D_800958A0 = 1;
         func_80063380(1);
         Game_SetNextMode(0x13, 1);
+#ifdef TARGET_PC
+        /* Press Start (0x759E) stays loaded during the Records attract screen where xC is already 1;
+           fade it out and queue Menu Select (0x75A0) when returning to the main menu. */
+        if (M2C_FIELD(D_8011EEF8, s32 *, 0x520) == 12) {
+            void Sound_FadeOutAll(s32, s32);
+            Sound_FadeOutAll(2, 30);
+            M2C_FIELD(D_8011EEF8, s32 *, 0x52C) = 0x759E + 2; /* 0x75A0 */
+            M2C_FIELD(D_8011EEF8, s32 *, 0x520) = 13;
+        }
+#endif
     } else {
         Pause_Return(arg0, 3);
     }
