@@ -28,6 +28,9 @@ extern Game *gGame[];
 extern f64 D_800B9CE0;
 extern f64 D_800B9D60;
 void Car_UpdatePhysics(WObj *, f32);
+#ifdef TARGET_PC
+void Port_CarTrace(const char *stage, void *car, f32 dt);
+#endif
 void Camera_Update(WObj *, f32);
 void Vec3f_Scale(Vec3f *, Vec3f *, f32);
 void Mtx3_RotateByVector(void *, Vec3f *);
@@ -48,7 +51,13 @@ void World_UpdateEffects(World *w, f32 dt) {
         WObj *o = w->x40C[i];
         switch (o->type) {
         case 3:
+#ifdef TARGET_PC
+            Port_CarTrace("pre-int", o, dt);
             Car_UpdatePhysics(o, dt);
+            Port_CarTrace("integrate", o, dt);
+#else
+            Car_UpdatePhysics(o, dt);
+#endif
             break;
         case 9:
             Camera_Update(o, dt);

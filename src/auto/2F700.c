@@ -100,6 +100,13 @@ void Vec3f_Set(Vec3f *, f32, f32, f32);
 f32 Vec3f_DistXZ(Vec3f, Vec3f);
 void Basis_Orthonormalize(Vec3f *);
 f64 fabs(f64);
+#ifdef TARGET_PC
+void Port_CarTrace(const char *stage, void *car, f32 dt);
+void Port_CarTraceStep(f32 dt);
+#define CAR_TRACE(stage, car) Port_CarTrace(stage, car, dt)
+#else
+#define CAR_TRACE(stage, car)
+#endif
 
 void Car_PhysicsStep(void *w, f32 dt) {
     Buf180 buf1[RACE_CARS]; /* one per car not wrecked */
@@ -118,6 +125,9 @@ void Car_PhysicsStep(void *w, f32 dt) {
     f32 len;
 
     cnt = 0;
+#ifdef TARGET_PC
+    Port_CarTraceStep(dt);
+#endif
     D_800D2E78 = dt;
     n = 0;
     for (i = 0; i < ((World *)w)->xD12; i++) {
@@ -164,16 +174,26 @@ void Car_PhysicsStep(void *w, f32 dt) {
         c = gGame->x1100->x74[i];
         b = &c->u.body;
         if (!c->u.f.xBAC) {
+            CAR_TRACE("before", c);
             Car_UpdateWheels(c);
+            CAR_TRACE("wheels", c);
             if (c->xC) {
                 Car_CollideOtherCars(c, i);
+                CAR_TRACE("car-car", c);
             }
             Car_CollideTrack(b, buf3, &cnt);
+            CAR_TRACE("track", c);
             Car_ApplyContactImpulses(c, b);
+            CAR_TRACE("contacts", c);
         }
         Car_CheckTriggersAndPickups(c);
     }
     func_8002E740();
+#ifdef TARGET_PC
+    for (i = 0; i < gGame->x1100->xA4; i++) {
+        CAR_TRACE("after", gGame->x1100->x74[i]);
+    }
+#endif
     Collision_ResetLastPair();
     for (i = 0; i < gGame->x1100->xA4; i++) {
         car = gGame->x1100->x74[i];
