@@ -99,6 +99,8 @@ static inline f32 tireF(f32 v, f32 a, f32 b, f32 load) {
 #ifdef TARGET_PC
 f32 Port_CarDrive(void *car, s32 reversing);
 f32 Port_CarBrake(void *car);
+void Port_CarTraceTire(void *car, s32 idx, s32 branch, f32 drive, f32 fl, f32 ft, f32 lon, f32 lat, f32 load,
+                       f32 spin, void *res);
 #endif
 
 Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s32 idx) {
@@ -132,6 +134,8 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
     f32 drive;
 #ifdef TARGET_PC
     f32 full; /* the drive torque at a full press (analog pedals) */
+    s32 trBranch = 2; /* DD64_CARTRACE: 0 drive slipping, 1 drive gripping, 2 no drive */
+    f32 trDrive = 0.0f;
 #endif
     f32 a;
     f32 b;
@@ -259,11 +263,19 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
             }
             *out = *out - drive + fl * radius;
             fx = fl;
+#ifdef TARGET_PC
+            trBranch = 0;
+            trDrive = drive;
+#endif
         } else {
             *out = 0.0f;
             k = -invR * (vt.x * side.x + vt.y * side.y + vt.z * side.z);
             ws->xC4 = k;
             fx = q;
+#ifdef TARGET_PC
+            trBranch = 1;
+            trDrive = drive;
+#endif
         }
         res.x = fx * side.x + ft * fwd.x;
         res.y = fx * side.y + ft * fwd.y;
@@ -349,6 +361,9 @@ Vec3f Wheel_ComputeTireForce(Car *car, Wheel *w, f32 load, Vec3f *n, f32 *out, s
             *out = *out * r;
         }
     }
+#ifdef TARGET_PC
+    Port_CarTraceTire(car, idx, trBranch, trDrive, fl, ft, lon, lat, load, ws->xC4, &res);
+#endif
     return res;
 }
 /* agent54: code now identical except the frame: ours is 0x128, original 0x130 (8 unused bytes at

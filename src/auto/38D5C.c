@@ -425,6 +425,12 @@ void Car_UpdatePhysics(Car *car, f32 dt) {
         Mtx3_RotateByVector(rot, &v10);
         Car_ApplyWheelForces(car, &vD8, &vE8, torque);
         Car_ApplySuspensionForces(car, &vB8, &vC8, h);
+#ifdef TARGET_PC
+        {
+            void Port_CarTraceForces(void *car, s32 sub, void *wheel, void *susp, void *wheelTq, void *suspTq, f32 h);
+            Port_CarTraceForces(car, i, &vD8, &vB8, &vE8, &vC8, h);
+        }
+#endif
         Vec3f_Add(&v30, &vD8, &vB8);
         Vec3f_Add(&v48, &vE8, &vC8);
         vel->x += body->x10 * v30.x * h;
