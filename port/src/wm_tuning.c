@@ -24,7 +24,7 @@ static const int kHudDefaults[WM_HUD_GROUPS][2] = {
     { 12, 12 },   /* score/place: top left corner (the touch L button is gone) */
     { 577, 15 },  /* time: top centre, its text on the same line as score and cars left, level with score and cars left (no START there now) */
     { 928, 12 },  /* cars left: top right, left of the touch pause button */
-    { 230, 137 }, /* map: left, below the score, right of L, above the arrows */
+    { 384, 58 },  /* map: top, right of the score */
     { 958, 92 },  /* damage gauge: right, above C and left of R */
     { 457, 579 }, /* pedals: the T/B bars side by side, centred under the car */
 };
