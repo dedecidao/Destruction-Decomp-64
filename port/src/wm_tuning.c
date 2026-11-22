@@ -26,7 +26,7 @@ static const int kHudDefaults[WM_HUD_GROUPS][2] = {
     { 928, 12 },  /* cars left: top right, left of the touch pause button */
     { 384, 58 },  /* map: top, right of the score */
     { 958, 92 },  /* damage gauge: right, above C and left of R */
-    { 457, 579 }, /* pedals: the T/B bars side by side, centred under the car */
+    { 457, 660 }, /* pedals: the T/B bars side by side, centred, near the bottom */
 };
 
 /*
