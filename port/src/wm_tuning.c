@@ -21,7 +21,7 @@ static int sInitialized;
 static const char *const kHudKeys[WM_HUD_GROUPS] = { "score", "time", "cars_left", "map", "damage" };
 static const int kHudDefaults[WM_HUD_GROUPS][2] = {
     { 12, 12 },   /* score/place: top left corner (the touch L button is gone), 1.5x */
-    { -1, -1 },   /* time: the N64's, top centre */
+    { 577, 12 },  /* time: top centre, level with score and cars left (no START there now) */
     { 928, 12 },  /* cars left: top right, left of the touch pause button */
     { 230, 137 }, /* map: left, below the score, right of L, above the arrows */
     { 868, 92 },  /* damage gauge + T/B bars: right, above C and left of R */
