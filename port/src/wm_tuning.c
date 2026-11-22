@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 3 /* 3: [score_fx] */
+#define WM_TUNING_VERSION 4 /* 4: larger score_fx scale (2.35) */
 
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
@@ -47,7 +47,7 @@ static void setDefaults(WMTuning *t) {
     t->snowLift = 0.06f;
 
     t->scoreFxEnabled = 1;
-    t->scoreFxScale = 1.60f;
+    t->scoreFxScale = 2.35f;
     t->scoreFxAudio = 1;
     t->scoreFxVolume = 1.0f;
 }
@@ -128,7 +128,7 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
         if (SDL_strcasecmp(key, "enabled") == 0) {
             t->scoreFxEnabled = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "scale") == 0) {
-            t->scoreFxScale = clampf((float)atof(val), 1.0f, 2.5f);
+            t->scoreFxScale = clampf((float)atof(val), 1.0f, 3.5f);
         } else if (SDL_strcasecmp(key, "audio") == 0) {
             t->scoreFxAudio = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "volume") == 0) {
@@ -247,9 +247,12 @@ void WM_ReloadTuning(void) {
     SDL_free(data);
 
     if (sTuning.tuningVersion >= 2 && sTuning.tuningVersion < WM_TUNING_VERSION) {
+        if (sTuning.tuningVersion == 3 && sTuning.scoreFxScale < 2.0f) {
+            sTuning.scoreFxScale = 2.35f;
+        }
         sTuning.tuningVersion = WM_TUNING_VERSION;
         writeDefaultIni(path, &sTuning);
-        Port_Log("wm_mod: added [score_fx] to %s (v%d)", path, WM_TUNING_VERSION);
+        Port_Log("wm_mod: updated [score_fx] in %s (v%d)", path, WM_TUNING_VERSION);
     } else if (sTuning.tuningVersion < WM_TUNING_VERSION) {
         int keepEnabled = sTuning.enabled;
         setDefaults(&sTuning);

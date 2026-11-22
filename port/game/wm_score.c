@@ -59,16 +59,15 @@ void Port_FontSeen(const void *font);
 
 #define GREEN_BASE 0x2EB043FFu
 #define GREEN_POP  0x48FF68FFu
-#define GREEN_TOTAL 0x98FFB0FFu
 
 static s32 sLastTarget;
 static s32 sPending;
 static s32 sPeak;
-static s32 sDisplayTotal;
+static s32 sHoldFrames;
+static s32 sDrainTick;
 static s32 sEntryFrames;
 static s32 sRecoilFrames;
 static s32 sExitFrames;
-static s32 sBankFlashFrames;
 static f32 sTickPulse;
 static u32 sShakeSeed = 0x13579BDFu;
 static ScoreFont *sCachedFont;
@@ -77,11 +76,11 @@ void WM_ScoreReset(void) {
     sLastTarget = 0;
     sPending = 0;
     sPeak = 0;
-    sDisplayTotal = 0;
+    sHoldFrames = 0;
+    sDrainTick = 0;
     sEntryFrames = 0;
     sRecoilFrames = 0;
     sExitFrames = 0;
-    sBankFlashFrames = 0;
     sTickPulse = 0.0f;
     sCachedFont = NULL;
 }
@@ -132,7 +131,6 @@ int WM_ScoreStep(int *curScore, int targetScore, int player) {
         /* Race restarted or score reset */
         WM_ScoreReset();
         sLastTarget = targetScore;
-        sDisplayTotal = *curScore;
         return 1;
     }
 
@@ -143,46 +141,58 @@ int WM_ScoreStep(int *curScore, int targetScore, int player) {
         if (sPending > sPeak) {
             sPeak = sPending;
         }
-        sEntryFrames = 9;
+        sHoldFrames = 12; /* brief beat so the big number reads clearly before draining */
+        sDrainTick = 0;
+        sEntryFrames = 10;
         sRecoilFrames = added >= 40 ? 7 : 4;
         sExitFrames = 0;
         WM_ScoreAudioHit(added, sPending);
     }
 
     if (sPending > 0) {
+        if (sHoldFrames > 0) {
+            sHoldFrames--;
+            return 1;
+        }
+        step = 0;
         if (sPending <= 25) {
-            step = 1; /* 20 pts drains in ~0.33 s at 60 Hz */
+            /* Slower, readable drain: 1 pt every 2 frames (~0.67 s for 20 pts) */
+            sDrainTick++;
+            if (sDrainTick >= 2) {
+                sDrainTick = 0;
+                step = 1;
+            }
         } else if (sPending <= 60) {
-            step = 2;
+            step = 1;
         } else if (sPending <= 120) {
-            step = 3;
+            step = 2;
         } else {
-            step = sPending / 24;
-            if (step < 5) {
-                step = 5;
+            step = sPending / 35;
+            if (step < 4) {
+                step = 4;
             }
         }
         if (step > sPending) {
             step = sPending;
         }
-        sPending -= step;
-        *curScore += step;
-        if (*curScore > targetScore) {
-            *curScore = targetScore;
-        }
-        sTickPulse = 1.0f;
-        WM_ScoreAudioTick(sPending, sPeak);
-        if (sPending == 0) {
-            *curScore = targetScore;
-            sExitFrames = 18;
-            sBankFlashFrames = 16;
-            WM_ScoreAudioBanked(sPeak);
+        if (step > 0) {
+            sPending -= step;
+            *curScore += step;
+            if (*curScore > targetScore) {
+                *curScore = targetScore;
+            }
+            sTickPulse = 1.0f;
+            WM_ScoreAudioTick(sPending, sPeak);
+            if (sPending == 0) {
+                *curScore = targetScore;
+                sExitFrames = 42; /* 10f hold at 0 + 32f smooth fade-out */
+                WM_ScoreAudioBanked(sPeak);
+            }
         }
     } else if (*curScore < targetScore) {
         *curScore = targetScore;
     }
 
-    sDisplayTotal = *curScore;
     return 1;
 }
 
@@ -340,7 +350,6 @@ void *WM_ScoreDraw(void *gfxPtr) {
     f32 baseScale, scale, cx, cy, popT = 0.0f;
     u8 alpha = 255;
     u32 col;
-    s32 usePlus;
 
     if (!isScoreActive() || !Port_GameDrawsWorld() || gGame == NULL) {
         return gfxPtr;
@@ -348,7 +357,7 @@ void *WM_ScoreDraw(void *gfxPtr) {
     if (gGame->x10FC != 0x1B && gGame->x10FC != 0x1C) {
         return gfxPtr;
     }
-    if (sPending <= 0 && sExitFrames <= 0 && sBankFlashFrames <= 0) {
+    if (sPending <= 0 && sExitFrames <= 0) {
         return gfxPtr;
     }
 
@@ -361,22 +370,22 @@ void *WM_ScoreDraw(void *gfxPtr) {
     scale = baseScale;
 
     /* 2D HUD coordinates (0..320, 0..240) stay centered in the 4:3 middle area
-       even when widescreen is enabled: (160, 62) sits cleanly in the upper-center
-       above the car and clear of the top HUD bar and side touch controls. */
+       even when widescreen is enabled: (160, 96) sits big and centered right
+       above the player's car. */
     cx = 160.0f;
-    cy = 62.0f;
+    cy = 96.0f;
 
     if (sEntryFrames > 0) {
-        /* Elastic pop-in overshoot (1.45x -> 1.0x) */
-        f32 t = (f32)sEntryFrames / 9.0f;
-        scale *= 1.0f + 0.45f * t * t;
+        /* Elastic pop-in overshoot (1.40x -> 1.0x) */
+        f32 t = (f32)sEntryFrames / 10.0f;
+        scale *= 1.0f + 0.40f * t * t;
         popT = t;
         sEntryFrames--;
     } else if (sTickPulse > 0.01f) {
         /* 1.08x micro-pulse per countdown tick */
         scale *= 1.0f + 0.08f * sTickPulse;
         popT = sTickPulse * 0.45f;
-        sTickPulse -= 0.24f;
+        sTickPulse -= 0.22f;
         if (sTickPulse < 0.0f) {
             sTickPulse = 0.0f;
         }
@@ -392,41 +401,20 @@ void *WM_ScoreDraw(void *gfxPtr) {
         sRecoilFrames--;
     }
 
-    if (sPending > 0 || sExitFrames > 0) {
-        if (sPending == 0 && sExitFrames > 0) {
-            f32 exitT = 1.0f - (f32)sExitFrames / 18.0f;
-            cy -= exitT * 6.0f;
-            alpha = (u8)((1.0f - exitT) * 255.0f);
-            sExitFrames--;
+    if (sPending == 0 && sExitFrames > 0) {
+        /* Brief hold at 0 (frames 42..33), then smooth gradient fade-out (32..1) */
+        if (sExitFrames <= 32) {
+            f32 fadeT = 1.0f - (f32)sExitFrames / 32.0f;
+            cy -= fadeT * 8.0f;
+            alpha = (u8)((1.0f - fadeT) * 255.0f);
         }
-        usePlus = glyphIndex(f, '+') >= 0;
-        fmtInt(buf, sPending, usePlus);
-        col = lerpColor(GREEN_BASE, GREEN_POP, popT, alpha);
-        if (alpha > 8) {
-            g = drawScaledText(g, f, cx + 1.0f, cy + 1.0f, buf, scale, (u32)((alpha * 3) / 4));
-            g = drawScaledText(g, f, cx, cy, buf, scale, col);
-        }
+        sExitFrames--;
     }
-
-    /* Synchronized total-score readout right beneath the central counter while
-       transferring or flashing "banked" */
-    if (sPending > 0 || sBankFlashFrames > 0) {
-        u8 totAlpha = 255;
-        f32 totScale = 1.05f + 0.08f * sTickPulse;
-        u32 totCol = GREEN_TOTAL;
-        if (sPending == 0 && sBankFlashFrames > 0) {
-            f32 ft = (f32)sBankFlashFrames / 16.0f;
-            totAlpha = (u8)(ft * 255.0f);
-            totScale = 1.05f + 0.12f * ft;
-            totCol = lerpColor(GREEN_BASE, GREEN_POP, ft, totAlpha);
-            sBankFlashFrames--;
-        }
-        fmtInt(buf, sDisplayTotal, 0);
-        if (totAlpha > 8) {
-            g = drawScaledText(g, f, 160.0f + 1.0f, 83.0f + 1.0f, buf, totScale,
-                               (u32)((totAlpha * 3) / 4));
-            g = drawScaledText(g, f, 160.0f, 83.0f, buf, totScale, totCol);
-        }
+    fmtInt(buf, sPending, 0);
+    col = lerpColor(GREEN_BASE, GREEN_POP, popT, alpha);
+    if (alpha > 8) {
+        g = drawScaledText(g, f, cx + 1.0f, cy + 1.0f, buf, scale, (u32)((alpha * 3) / 4));
+        g = drawScaledText(g, f, cx, cy, buf, scale, col);
     }
 
     GFX2(g, 0xE7000000, 0);
