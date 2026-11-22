@@ -53,12 +53,12 @@ typedef struct {
     /* Widescreen HUD ([hud] in wm_tuning.ini, docs/HUD_LAYOUT.md) */
     int hudLayout;              /* 1 = the HUD groups at hudPos, 0 = the N64's places */
     float hudStartLights;       /* the start lights' size, 1.0 = the N64's */
-    int hudPos[5][2];           /* WM_HUD_*: top-left on a 1280x720 screen, -1 = the N64's */
-    float hudScale[5];          /* WM_HUD_*: size, 1.0 = the N64's */
+    int hudPos[6][2];           /* WM_HUD_*: top-left on a 1280x720 screen, -1 = the N64's */
+    float hudScale[6];          /* WM_HUD_*: size, 1.0 = the N64's */
 } WMTuning;
 
 /* The HUD groups the widescreen layout moves ([hud] in wm_tuning.ini) */
-enum { WM_HUD_SCORE, WM_HUD_TIME, WM_HUD_CARS, WM_HUD_MAP, WM_HUD_DAMAGE, WM_HUD_GROUPS };
+enum { WM_HUD_SCORE, WM_HUD_TIME, WM_HUD_CARS, WM_HUD_MAP, WM_HUD_DAMAGE, WM_HUD_PEDALS, WM_HUD_GROUPS };
 
 /* Weather kinds (WM_WeatherRoll / WM_WeatherPick) */
 enum {

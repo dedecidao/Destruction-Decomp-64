@@ -730,7 +730,8 @@ static const struct {
     { 139, 22, 0 },  /* time: SCREEN_BOX3 */
     { 219, 21, 1 },  /* cars left: SCREEN_BOX2 */
     { 32, 160, -1 }, /* map: RADAR and the cars on it */
-    { 228, 150, 1 }, /* damage: the T/B bars' left, the gauge's top */
+    { 258, 150, 1 }, /* damage: HEALTH / WIRE */
+    { 99, 193, 0 },  /* pedals: the T/B bars (WM_HudDraw), centred at 160, 199 */
 };
 
 static int hudGroupOf(int id) {
@@ -889,6 +890,41 @@ static WMGfx *wmDrawVectorBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val,
     return g;
 }
 
+/* A horizontal bar filling with val from its left end, or from its right end */
+static WMGfx *wmDrawHBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, int fromRight,
+                         u32 bgRgba, u32 borderRgba, u32 fillRgba, u32 capRgba) {
+    s32 innerW = (x1 - 2) - (x0 + 2);
+    s32 quarter = innerW / 4;
+    s32 fillW, i;
+
+    if (val < 0.0f) {
+        val = 0.0f;
+    } else if (val > 1.0f) {
+        val = 1.0f;
+    }
+    g = wmRect(g, x0 + 1, y0 + 1, x1 - 1, y1 - 1, bgRgba);
+    g = wmDrawFrame(g, x0, y0, x1, y1, borderRgba);
+    for (i = 1; i <= 3; i++) {
+        g = wmRect(g, x0 + 2 + quarter * i, y0 + 2, x0 + 2 + quarter * i + 1, y1 - 2, i == 2 ? 0xFFFFFF38 : 0xFFFFFF28);
+    }
+    if (val > 0.005f) {
+        fillW = (s32)(val * (f32)innerW + 0.5f);
+        if (fillW < 2) {
+            fillW = 2;
+        } else if (fillW > innerW) {
+            fillW = innerW;
+        }
+        if (!fromRight) {
+            g = wmRect(g, x0 + 2, y0 + 2, x0 + 2 + fillW, y1 - 2, fillRgba);
+            g = wmRect(g, x0 + fillW, y0 + 2, x0 + 2 + fillW, y1 - 2, capRgba);
+        } else {
+            g = wmRect(g, x1 - 2 - fillW, y0 + 2, x1 - 2, y1 - 2, fillRgba);
+            g = wmRect(g, x1 - 2 - fillW, y0 + 2, x1 - fillW, y1 - 2, capRgba);
+        }
+    }
+    return g;
+}
+
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     if (target > cur) {
         cur += (target - cur) * riseRate + 0.025f;
@@ -968,20 +1004,22 @@ void *WM_HudDraw(void *gfxPtr) {
     /* Directly left of the car damage gauge and level with it: the bars and their
        T / B letters span the gauge's height (about y 152-220 of the 320x240 screen) */
     {
-        /* with the damage gauge where the widescreen layout puts it */
+        /* where the widescreen layout puts the pedals */
         int dx4, dy4, s4096;
-        WM_HudGroupOffset(WM_HUD_DAMAGE, &dx4, &dy4, &s4096);
+        WM_HudGroupOffset(WM_HUD_PEDALS, &dx4, &dy4, &s4096);
         hudDx4 = dx4 | dy4 | (s4096 - 4096);
         WM_GFX2(g, 0x00490000, s4096);
         WM_GFX2(g, 0x00480000 | (dy4 & 0xFFFF), dx4);
     }
+    /* Side by side under the car, centred at 160, 199: T fills from the left toward the
+       middle, B from the right toward the middle, the letters at the outer ends */
     g = wmBeginRects(g);
-    g = wmDrawVectorBar(g, 228, 158, 240, 206, sSmoothT,
-                        0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
-    g = wmDrawVectorBar(g, 243, 158, 255, 206, sSmoothB,
-                        0x180608B8, handbrake ? 0xFFA228F0 : 0xFF5252E0, 0xF52828FF, 0xFF9A80FF);
-    g = wmDrawGlyphT(g, 230, 209, 0x62C2FFFF);
-    g = wmDrawGlyphB(g, 245, 209, 0xFF5858FF);
+    g = wmDrawHBar(g, 109, 193, 157, 205, sSmoothT, 0,
+                   0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
+    g = wmDrawHBar(g, 163, 193, 211, 205, sSmoothB, 1,
+                   0x180608B8, handbrake ? 0xFFA228F0 : 0xFF5252E0, 0xF52828FF, 0xFF9A80FF);
+    g = wmDrawGlyphT(g, 98, 195, 0x62C2FFFF);
+    g = wmDrawGlyphB(g, 214, 195, 0xFF5858FF);
     WM_GFX2(g, 0xE7000000, 0);
     if (hudDx4 != 0) {
         WM_GFX2(g, 0x00490000, 4096); /* the scale and offset back off */

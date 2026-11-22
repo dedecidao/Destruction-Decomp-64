@@ -18,13 +18,15 @@ static int sInitialized;
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
-static const char *const kHudKeys[WM_HUD_GROUPS] = { "score", "time", "cars_left", "map", "damage" };
+static const char *const kHudKeys[WM_HUD_GROUPS] = { "score", "time", "cars_left", "map", "damage",
+                                                     "pedals" };
 static const int kHudDefaults[WM_HUD_GROUPS][2] = {
     { 12, 12 },   /* score/place: top left corner (the touch L button is gone), 1.5x */
     { 577, 12 },  /* time: top centre, level with score and cars left (no START there now) */
     { 928, 12 },  /* cars left: top right, left of the touch pause button */
     { 230, 137 }, /* map: left, below the score, right of L, above the arrows */
-    { 868, 92 },  /* damage gauge + T/B bars: right, above C and left of R */
+    { 958, 92 },  /* damage gauge: right, above C and left of R */
+    { 457, 579 }, /* pedals: the T/B bars side by side, centred under the car */
 };
 
 /*
@@ -49,7 +51,7 @@ static const int kWeatherDefaults[12][WM_WEATHER_KINDS] = {
 };
 
 static const char *const kWeatherNames[WM_WEATHER_KINDS] = { "clear", "rain", "storm", "snow" };
-static const float kHudScaleDefaults[WM_HUD_GROUPS] = { 1.5f, 1.0f, 1.0f, 1.0f, 1.0f };
+static const float kHudScaleDefaults[WM_HUD_GROUPS] = { 1.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
