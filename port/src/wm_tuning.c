@@ -14,13 +14,13 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 7 /* 7: [hud] widescreen layout and smaller start lights */
+#define WM_TUNING_VERSION 8 /* 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
 static const char *const kHudKeys[WM_HUD_GROUPS] = { "score", "time", "cars_left", "map", "damage" };
 static const int kHudDefaults[WM_HUD_GROUPS][2] = {
-    { 215, 12 },  /* score/place: top left, right of the L button */
+    { 12, 12 },   /* score/place: top left corner (the touch L button is gone), 1.5x */
     { -1, -1 },   /* time: the N64's, top centre */
     { 928, 12 },  /* cars left: top right, left of the touch pause button */
     { 230, 137 }, /* map: left, below the score, right of L, above the arrows */
@@ -49,6 +49,7 @@ static const int kWeatherDefaults[12][WM_WEATHER_KINDS] = {
 };
 
 static const char *const kWeatherNames[WM_WEATHER_KINDS] = { "clear", "rain", "storm", "snow" };
+static const float kHudScaleDefaults[WM_HUD_GROUPS] = { 1.5f, 1.0f, 1.0f, 1.0f, 1.0f };
 
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
@@ -98,6 +99,7 @@ static void setDefaults(WMTuning *t) {
     t->hudLayout = 1;
     t->hudStartLights = 0.40f;
     memcpy(t->hudPos, kHudDefaults, sizeof(t->hudPos));
+    memcpy(t->hudScale, kHudScaleDefaults, sizeof(t->hudScale));
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -180,13 +182,14 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
     fprintf(f, "; left edge, cars_left and damage to the right edge, time to the centre. layout = 0: the N64's HUD.\n");
+    fprintf(f, "; The third number is the group's size (1.00 = the N64's).\n");
     fprintf(f, "; start_lights = the size of the red / yellow / green start lights (1.00 = the N64's).\n");
     fprintf(f, "layout = %d\n", t->hudLayout);
     fprintf(f, "start_lights = %.2f\n", t->hudStartLights);
     {
         int i;
         for (i = 0; i < WM_HUD_GROUPS; i++) {
-            fprintf(f, "%s = %d %d\n", kHudKeys[i], t->hudPos[i][0], t->hudPos[i][1]);
+            fprintf(f, "%s = %d %d %.2f\n", kHudKeys[i], t->hudPos[i][0], t->hudPos[i][1], t->hudScale[i]);
         }
     }
     fclose(f);
@@ -222,9 +225,11 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
         } else {
             for (i = 0; i < WM_HUD_GROUPS; i++) {
                 int x, y;
-                if (SDL_strcasecmp(key, kHudKeys[i]) == 0 && sscanf(val, "%d %d", &x, &y) == 2) {
+                float s = 1.0f;
+                if (SDL_strcasecmp(key, kHudKeys[i]) == 0 && sscanf(val, "%d %d %f", &x, &y, &s) >= 2) {
                     t->hudPos[i][0] = clampi(x, -1, 1280);
                     t->hudPos[i][1] = clampi(y, -1, 720);
+                    t->hudScale[i] = clampf(s, 0.5f, 3.0f);
                 }
             }
         }
@@ -369,6 +374,11 @@ void WM_ReloadTuning(void) {
            new parallax snow staying on track 10 */
         if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
+        }
+        if (sTuning.tuningVersion == 7) {
+            /* v7 was a test build's layout: the new defaults */
+            memcpy(sTuning.hudPos, kHudDefaults, sizeof(sTuning.hudPos));
+            memcpy(sTuning.hudScale, kHudScaleDefaults, sizeof(sTuning.hudScale));
         }
         sTuning.tuningVersion = WM_TUNING_VERSION;
         writeDefaultIni(path, &sTuning);

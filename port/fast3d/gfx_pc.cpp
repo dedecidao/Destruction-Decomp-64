@@ -370,7 +370,7 @@ static bool vp_wide;                   /* the current draw uses the whole width 
 /* Widescreen HUD layout (port/game/wm_mod.c WM_HudOffset): the 4:3 area the current 2D
    draws land in, moved by this many N64 pixels, so a HUD element can sit at the window's
    edge. Set by the port's offset command in the display list (a G_NOOP, gfx_run) */
-static float hud_dx, hud_dy;
+static float hud_dx, hud_dy, hud_scale = 1.0f; /* the group drawn at hud_scale, then moved */
 
 /* The room beside the 4:3 area on each side, in N64 pixels (0 unless widescreen) */
 extern "C" float gfx_hud_side_room(void) {
@@ -1530,14 +1530,22 @@ static void gfx_adjust_rect(struct XYWidthHeight *area) {
     /* N64 pixels (top-left origin) to game framebuffer pixels (bottom-left origin) */
     float sx = (float)fb_width / NATIVE_WIDTH, sy = (float)fb_height / NATIVE_HEIGHT;
     float x0 = 0.0f;
-    float y0 = 0.0f;
     if (gfx_aspect_mode == 2 && !vp_wide) {
-        sx = sy; /* the 4:3 area in the middle */
-        x0 = (fb_width - NATIVE_WIDTH * sx) / 2.0f + hud_dx * sx; /* moved for the HUD layout */
-        y0 = -hud_dy * sy;
+        /* the 4:3 area in the middle; for the HUD layout scaled by hud_scale about its
+           top-left, then moved by hud_dx, hud_dy (all 1 and 0 otherwise) */
+        x0 = (fb_width - NATIVE_WIDTH * sy) / 2.0f + hud_dx * sy;
+        sx = sy * hud_scale;
+        float x = x0 + area->x * sx, w = area->width * sx;
+        float y = (NATIVE_HEIGHT - hud_dy - (area->y + (int)area->height) * hud_scale) * sy;
+        float h = area->height * sy * hud_scale;
+        area->x = (int16_t)x;
+        area->y = (int16_t)y;
+        area->width = (uint32_t)(w + 0.5f);
+        area->height = (uint32_t)(h + 0.5f);
+        return;
     }
     float x = x0 + area->x * sx, w = area->width * sx;
-    float y = y0 + (NATIVE_HEIGHT - area->y - (int)area->height) * sy, h = area->height * sy;
+    float y = (NATIVE_HEIGHT - area->y - (int)area->height) * sy, h = area->height * sy;
     area->x = (int16_t)x;
     area->y = (int16_t)y;
     area->width = (uint32_t)(w + 0.5f);
@@ -2624,6 +2632,13 @@ static void gfx_run_dl(const uint8_t *cmd) {
                         hud_dy = dy;
                         rdp.viewport_or_scissor_changed = true;
                     }
+                } else if ((w0 & 0x00FF0000) == 0x00490000) {
+                    /* the HUD group's scale, w1 / 4096 (sent before its offset) */
+                    float s = w1 > 0 ? (int32_t)w1 / 4096.0f : 1.0f;
+                    if (s != hud_scale) {
+                        hud_scale = s;
+                        rdp.viewport_or_scissor_changed = true;
+                    }
                 }
                 break;
             case G_MTX:
@@ -3522,6 +3537,7 @@ void gfx_run(const void *commands, uint32_t ucode_text) {
 void gfx_end_frame(void) {
     frame_started = false;
     hud_dx = hud_dy = 0.0f; /* a display list that left an offset set */
+    hud_scale = 1.0f;
     interp_end_frame();
 }
 

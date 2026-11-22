@@ -54,6 +54,7 @@ typedef struct {
     int hudLayout;              /* 1 = the HUD groups at hudPos, 0 = the N64's places */
     float hudStartLights;       /* the start lights' size, 1.0 = the N64's */
     int hudPos[5][2];           /* WM_HUD_*: top-left on a 1280x720 screen, -1 = the N64's */
+    float hudScale[5];          /* WM_HUD_*: size, 1.0 = the N64's */
 } WMTuning;
 
 /* The HUD groups the widescreen layout moves ([hud] in wm_tuning.ini) */
@@ -121,9 +122,9 @@ int WM_WeatherActive(void);
 int WM_WeatherStorm(void);
 void *WM_WeatherDraw(void *cam, void *gfx);
 /* Widescreen HUD: the offset a 2D element is drawn with (quarter N64 pixels) and its scale */
-void WM_HudOffset(int id, int *dx4, int *dy4);
+void WM_HudOffset(int id, int *dx4, int *dy4, int *scale4096);
 float WM_HudScale(int id);
-void WM_HudGroupOffset(int group, int *dx4, int *dy4);
+void WM_HudGroupOffset(int group, int *dx4, int *dy4, int *scale4096);
 
 #ifdef __cplusplus
 }

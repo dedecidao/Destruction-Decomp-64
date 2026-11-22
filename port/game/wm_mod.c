@@ -761,11 +761,12 @@ static int hudLayoutOn(void) {
            gfx_hud_side_room() > 0.0f;
 }
 
-void WM_HudGroupOffset(int group, int *dx4, int *dy4) {
+void WM_HudGroupOffset(int group, int *dx4, int *dy4, int *scale4096) {
     const WMTuning *t = WM_GetTuning();
-    float room, tx;
+    float room, tx, s;
 
     *dx4 = *dy4 = 0;
+    *scale4096 = 4096;
     if (group < 0 || group >= WM_HUD_GROUPS || !hudLayoutOn() || t->hudPos[group][0] < 0) {
         return;
     }
@@ -778,14 +779,19 @@ void WM_HudGroupOffset(int group, int *dx4, int *dy4) {
     } else {
         tx = 160.0f + (t->hudPos[group][0] - 640) / 3.0f;
     }
-    *dx4 = (int)((tx - kHudGroup[group].x) * 4.0f);
+    /* drawn at s about the screen's top-left, then moved so the group's top-left lands on tx */
+    s = t->hudScale[group];
+    *scale4096 = (int)(s * 4096.0f);
+    *dx4 = (int)((tx - kHudGroup[group].x * s) * 4.0f);
     if (t->hudPos[group][1] >= 0) {
-        *dy4 = (int)((t->hudPos[group][1] / 3.0f - kHudGroup[group].y) * 4.0f);
+        *dy4 = (int)((t->hudPos[group][1] / 3.0f - kHudGroup[group].y * s) * 4.0f);
+    } else {
+        *dy4 = (int)(kHudGroup[group].y * (1.0f - s) * 4.0f);
     }
 }
 
-void WM_HudOffset(int id, int *dx4, int *dy4) {
-    WM_HudGroupOffset(hudGroupOf(id), dx4, dy4);
+void WM_HudOffset(int id, int *dx4, int *dy4, int *scale4096) {
+    WM_HudGroupOffset(hudGroupOf(id), dx4, dy4, scale4096);
 }
 
 /* The start lights (READY / SET / GO and their halos, the orange light) */
@@ -963,9 +969,10 @@ void *WM_HudDraw(void *gfxPtr) {
        T / B letters span the gauge's height (about y 152-220 of the 320x240 screen) */
     {
         /* with the damage gauge where the widescreen layout puts it */
-        int dx4, dy4;
-        WM_HudGroupOffset(WM_HUD_DAMAGE, &dx4, &dy4);
-        hudDx4 = dx4;
+        int dx4, dy4, s4096;
+        WM_HudGroupOffset(WM_HUD_DAMAGE, &dx4, &dy4, &s4096);
+        hudDx4 = dx4 | dy4 | (s4096 - 4096);
+        WM_GFX2(g, 0x00490000, s4096);
         WM_GFX2(g, 0x00480000 | (dy4 & 0xFFFF), dx4);
     }
     g = wmBeginRects(g);
@@ -977,7 +984,8 @@ void *WM_HudDraw(void *gfxPtr) {
     g = wmDrawGlyphB(g, 245, 209, 0xFF5858FF);
     WM_GFX2(g, 0xE7000000, 0);
     if (hudDx4 != 0) {
-        WM_GFX2(g, 0x00480000, 0); /* the offset back off */
+        WM_GFX2(g, 0x00490000, 4096); /* the scale and offset back off */
+        WM_GFX2(g, 0x00480000, 0);
     }
     return WM_ScoreDraw(g);
 }

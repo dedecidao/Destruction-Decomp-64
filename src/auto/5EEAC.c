@@ -67,7 +67,7 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
     ElemA *e;
 #ifdef TARGET_PC
     /* the widescreen HUD layout's offset last put in the display list (port/game/wm_mod.c) */
-    s32 hudDx = 0, hudDy = 0;
+    s32 hudDx = 0, hudDy = 0, hudS = 4096;
 #endif
 
     if (ctx->x8B54 == NULL) {
@@ -87,13 +87,15 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
         }
         {
             /* Wrecked Metal's widescreen HUD: the element's group moved toward the screen's edge */
-            void WM_HudOffset(int id, int *dx4, int *dy4);
-            s32 dx, dy;
-            WM_HudOffset(*(s32 *)e, &dx, &dy);
-            if (dx != hudDx || dy != hudDy) {
+            void WM_HudOffset(int id, int *dx4, int *dy4, int *scale4096);
+            s32 dx, dy, s;
+            WM_HudOffset(*(s32 *)e, &dx, &dy, &s);
+            if (dx != hudDx || dy != hudDy || s != hudS) {
+                GFX2(g, 0x00490000, s);
                 GFX2(g, 0x00480000 | (dy & 0xFFFF), dx);
                 hudDx = dx;
                 hudDy = dy;
+                hudS = s;
             }
         }
 #endif
@@ -182,8 +184,9 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
         }
     }
 #ifdef TARGET_PC
-    if (hudDx != 0 || hudDy != 0) {
-        GFX2(g, 0x00480000, 0); /* the HUD offset back off */
+    if (hudDx != 0 || hudDy != 0 || hudS != 4096) {
+        GFX2(g, 0x00490000, 4096); /* the HUD scale and offset back off */
+        GFX2(g, 0x00480000, 0);
     }
 #endif
     return Gfx_RestoreF3dexUcode(g);
