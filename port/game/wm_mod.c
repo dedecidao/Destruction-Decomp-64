@@ -870,14 +870,15 @@ void *WM_HudDraw(void *gfxPtr) {
     sSmoothT = stepSmoothBar(sSmoothT, rawT, 0.28f, 0.30f);
     sSmoothB = stepSmoothBar(sSmoothB, rawB, 0.34f, 0.32f);
 
-    /* Positioned directly left of the MPH / car damage gauge, clear of Z/B/A touch controls */
+    /* Directly left of the car damage gauge and level with it: the bars and their
+       T / B letters span the gauge's height (about y 152-220 of the 320x240 screen) */
     g = wmBeginRects(g);
-    g = wmDrawVectorBar(g, 228, 122, 240, 170, sSmoothT,
+    g = wmDrawVectorBar(g, 228, 158, 240, 206, sSmoothT,
                         0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
-    g = wmDrawVectorBar(g, 243, 122, 255, 170, sSmoothB,
+    g = wmDrawVectorBar(g, 243, 158, 255, 206, sSmoothB,
                         0x180608B8, handbrake ? 0xFFA228F0 : 0xFF5252E0, 0xF52828FF, 0xFF9A80FF);
-    g = wmDrawGlyphT(g, 230, 173, 0x62C2FFFF);
-    g = wmDrawGlyphB(g, 245, 173, 0xFF5858FF);
+    g = wmDrawGlyphT(g, 230, 209, 0x62C2FFFF);
+    g = wmDrawGlyphB(g, 245, 209, 0xFF5858FF);
     WM_GFX2(g, 0xE7000000, 0);
     return WM_ScoreDraw(g);
 }
