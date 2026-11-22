@@ -100,6 +100,16 @@ Each track is two MIPS ELF objects (`<track>.o`, `<track>_sdl.o`) with symbol ta
 
 Display lists are built with the standard F3DEX 2.07 and S2DEX 2.07 microcode (text at ROM 0x7B9D0). Many small functions write GBI commands directly, for example `gSPDisplayList` (0xDE), `gDPFullSync` (0xE9) and `gSPEndDisplayList` (0xDF). A port needs an F3DEX-compatible renderer.
 
+### Weather
+
+`Weather_Init` (`src/auto/1A390.c`), `Weather_Draw` (`1A78C.c`) and `Weather_Free` (`1AD74.c`) run one particle system, `D_800D1AA0`, set up when a race scene loads (`func_800123C0`, never in game type 3). It holds 90 particles in a 1400-unit box that `Weather_Draw` moves against the camera and draws as 2x2 tiles in front of it at 1/120 scale. The table `D_8008F824[2]` has two kinds: rain (type 0: scale 15, size 14, fall -7, streak billboard, texture `D_8008F620`, a random wind) and snow (type 1: scale 10, size 12, fall -0.5, square billboard, texture `D_8008F720`, random jitter). Retail only turns weather on for track 10 (snow); rain is never used. `D_8008F820` = 1 means no weather.
+
+Lightning is separate: `Render_DrawSkyAndWorld` (`129B0.c`) calls `Weather_UpdateLightning` (`13148.c`) when the track's options byte `x1` is set. It flashes a sky colour command from the track's resource (`D_801244D0`) and plays sound slot 9. No retail track sets the flag, and that block is disabled on every race track, so the code is dead.
+
+Race track ids (`D_800958B4`): 0-3 are the arenas, 4-11 the races. The cups and the track menu list them as 5 4 0 7 8 1 11 6 2 10 9 3 (`D_80095CA8`), so the race menu order is 5 4 7 8 11 6 10 9.
+
+The PC port's Wrecked Metal mode replaces this with `port/game/wm_weather.c` (random rain, storm or snow per track, three parallax layers, a flash and a synthesized thunder, `port/src/wm_thunder.c`), chosen by `WM_WeatherPick` in `port/src/wm_tuning.c` from `Data/wm_tuning.ini` `[weather]`. Play Fidelity keeps the original code.
+
 ## SDK
 
 libultra 2.0I, libc and the audio library. Named functions are in `symbol_addrs.txt`; decompiled ones are in `src/libultra/`, `src/libc/` and `src/auto/`. Some, such as `osGetCount` and `__osDisableInt`, were hand-written assembly in the SDK and stay as assembly. The game uses the SDK scheduler (`osCreateScheduler`, `__scMain`) and the Rumble Pak (`osMotorInit`).
