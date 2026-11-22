@@ -13,6 +13,12 @@ void Weather_Free(void) {
     s8 i;
     Model *m;
 
+#ifdef TARGET_PC
+    {
+        void WM_WeatherFree(void);
+        WM_WeatherFree(); /* Wrecked Metal's weather layers, if any */
+    }
+#endif
     if (D_8008F820) {
         return;
     }

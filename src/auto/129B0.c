@@ -40,6 +40,9 @@ extern u8 D_80125460[];
 extern s32 D_80130248;
 extern u8 D_80083B78[];
 void Weather_UpdateLightning(Camera *);
+#ifdef TARGET_PC
+s32 Port_TrackLightning(s32 n64); /* port/game/wm_weather.c */
+#endif
 Gfx *Camera_BuildProjection(Gfx *, Camera *);
 Gfx *Track_DrawDisplayList(void *, Gfx *);
 void Tex_UpdateScrollAndAnim(void);
@@ -52,9 +55,15 @@ Gfx *Render_DrawSkyAndWorld(s32 arg0, Gfx *gfx, Camera *cam) {
     Gfx *g;
 
     if (gGame->xC == 2) {
+#ifdef TARGET_PC
+        if (Port_TrackLightning(D_80125B68->x1)) {
+            Weather_UpdateLightning(cam);
+        }
+#else
         if (D_80125B68->x1) {
             Weather_UpdateLightning(cam);
         }
+#endif
         far = cam->xC;
         eye = cam->eye;
         at = cam->at;

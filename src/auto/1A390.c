@@ -49,6 +49,14 @@ void Weather_Init(void) {
     Weather *w;
     Vec3f p;
 
+#ifdef TARGET_PC
+    {
+        int WM_WeatherInit(void); /* Wrecked Metal's random weather (port/game/wm_weather.c) */
+        if (WM_WeatherInit()) {
+            return;
+        }
+    }
+#endif
     if (D_800958B4 == 10) {
         range = 1400.0f;
         type = 1;
