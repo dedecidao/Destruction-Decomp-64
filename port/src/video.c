@@ -321,6 +321,18 @@ static struct { unsigned frame; int x, y, w, h; } sPressStart;
 static unsigned sUiFrame = 1;
 
 void Port_UiSpriteDrawn(s32 id, s32 x, s32 y, s32 w, s32 h) {
+    {
+        /* DD64_UILOG: where each 2D picture is, once */
+        static int log = -1;
+        static unsigned char seen[1024];
+        if (log < 0) {
+            log = SDL_getenv("DD64_UILOG") != NULL;
+        }
+        if (log && id >= 0 && id < 1024 && !seen[id]) {
+            seen[id] = 1;
+            Port_Log("ui: sprite %d at %d,%d size %dx%d", id, x, y, w, h);
+        }
+    }
     if (id == 36) { /* PRESS_START_SP */
         sPressStart.frame = sUiFrame;
         sPressStart.x = x;

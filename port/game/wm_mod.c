@@ -715,6 +715,87 @@ f32 WM_HandbrakeSlipThreshold(void *carPtr) {
 
 #define WM_GFX2(g, a, b) do { WMGfx *_g = (g)++; _g->w0 = (u32)(a); _g->w1 = (u32)(b); } while (0)
 
+/* ---- Widescreen HUD layout ([hud] in wm_tuning.ini, docs/HUD_LAYOUT.md) ---- */
+
+extern u8 D_800D2E58; /* the views drawn: 1 = one player */
+float gfx_hud_side_room(void);
+
+/* Each group's top-left as the N64 draws it (N64 pixels) and the edge it keeps to on a
+   wider screen: -1 left, 0 centre, 1 right */
+static const struct {
+    s16 x, y;
+    s8 anchor;
+} kHudGroup[WM_HUD_GROUPS] = {
+    { 21, 21, -1 },  /* score/place: SCREEN_BOX1 and its text */
+    { 139, 22, 0 },  /* time: SCREEN_BOX3 */
+    { 219, 21, 1 },  /* cars left: SCREEN_BOX2 */
+    { 32, 160, -1 }, /* map: RADAR and the cars on it */
+    { 228, 150, 1 }, /* damage: the T/B bars' left, the gauge's top */
+};
+
+static int hudGroupOf(int id) {
+    switch (id) {
+        case 168: case 436: case 444: case 413: case 518: /* SCREEN_BOX1, SCORE/, score, PLACE, place */
+            return WM_HUD_SCORE;
+        case 170: case 434: case 512: /* SCREEN_BOX3, TIME, time */
+            return WM_HUD_TIME;
+        case 169: case 504: case 424: /* SCREEN_BOX2, CARS LEFT, cars left */
+            return WM_HUD_CARS;
+        case 522: /* the speed under the damage gauge */
+            return WM_HUD_DAMAGE;
+        default:
+            break;
+    }
+    if (id >= 14 && id <= 29) { /* RADAR_SP, CAR_RADAR_USER0..AI10_SP */
+        return WM_HUD_MAP;
+    }
+    if (id >= 40 && id <= 55) { /* HEALTH_*_SP, WIRE_*_SP */
+        return WM_HUD_DAMAGE;
+    }
+    return -1;
+}
+
+/* One player's race on a wide screen, the layout on */
+static int hudLayoutOn(void) {
+    return WM_Enabled() && WM_GetTuning()->hudLayout && D_800D2E58 == 1 && Port_GameDrawsWorld() &&
+           gfx_hud_side_room() > 0.0f;
+}
+
+void WM_HudGroupOffset(int group, int *dx4, int *dy4) {
+    const WMTuning *t = WM_GetTuning();
+    float room, tx;
+
+    *dx4 = *dy4 = 0;
+    if (group < 0 || group >= WM_HUD_GROUPS || !hudLayoutOn() || t->hudPos[group][0] < 0) {
+        return;
+    }
+    /* the template is 1280x720: 3 pixels an N64 pixel, the 4:3 area from x 160 to 1120 */
+    room = gfx_hud_side_room();
+    if (kHudGroup[group].anchor < 0) {
+        tx = -room + t->hudPos[group][0] / 3.0f;
+    } else if (kHudGroup[group].anchor > 0) {
+        tx = 320.0f + room - (1280 - t->hudPos[group][0]) / 3.0f;
+    } else {
+        tx = 160.0f + (t->hudPos[group][0] - 640) / 3.0f;
+    }
+    *dx4 = (int)((tx - kHudGroup[group].x) * 4.0f);
+    if (t->hudPos[group][1] >= 0) {
+        *dy4 = (int)((t->hudPos[group][1] / 3.0f - kHudGroup[group].y) * 4.0f);
+    }
+}
+
+void WM_HudOffset(int id, int *dx4, int *dy4) {
+    WM_HudGroupOffset(hudGroupOf(id), dx4, dy4);
+}
+
+/* The start lights (READY / SET / GO and their halos, the orange light) */
+float WM_HudScale(int id) {
+    if ((id == 161 || id == 162 || (id >= 260 && id <= 265)) && WM_Enabled()) {
+        return WM_GetTuning()->hudStartLights;
+    }
+    return 1.0f;
+}
+
 static WMGfx *wmBeginRects(WMGfx *g) {
     WM_GFX2(g, 0xE7000000, 0);
     WM_GFX2(g, 0xE3000A01, 0);          /* one cycle */
@@ -826,6 +907,7 @@ void *WM_HudDraw(void *gfxPtr) {
     s32 ch = 0;
     f32 rawT = 0.0f, rawB = 0.0f;
     int handbrake = 0;
+    int hudDx4 = 1; /* (always reset after the bars) */
 
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
@@ -872,6 +954,13 @@ void *WM_HudDraw(void *gfxPtr) {
 
     /* Directly left of the car damage gauge and level with it: the bars and their
        T / B letters span the gauge's height (about y 152-220 of the 320x240 screen) */
+    {
+        /* with the damage gauge where the widescreen layout puts it */
+        int dx4, dy4;
+        WM_HudGroupOffset(WM_HUD_DAMAGE, &dx4, &dy4);
+        hudDx4 = dx4;
+        WM_GFX2(g, 0x00480000 | (dy4 & 0xFFFF), dx4);
+    }
     g = wmBeginRects(g);
     g = wmDrawVectorBar(g, 228, 158, 240, 206, sSmoothT,
                         0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
@@ -880,5 +969,8 @@ void *WM_HudDraw(void *gfxPtr) {
     g = wmDrawGlyphT(g, 230, 209, 0x62C2FFFF);
     g = wmDrawGlyphB(g, 245, 209, 0xFF5858FF);
     WM_GFX2(g, 0xE7000000, 0);
+    if (hudDx4 != 0) {
+        WM_GFX2(g, 0x00480000, 0); /* the offset back off */
+    }
     return WM_ScoreDraw(g);
 }

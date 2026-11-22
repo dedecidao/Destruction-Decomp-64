@@ -50,7 +50,14 @@ typedef struct {
     int weatherLayers;          /* 1-3 particle layers (parallax) */
     float weatherDensity;       /* particle count multiplier */
     int weatherChance[12][4];   /* per track id: clear, rain, storm, snow (weights) */
+    /* Widescreen HUD ([hud] in wm_tuning.ini, docs/HUD_LAYOUT.md) */
+    int hudLayout;              /* 1 = the HUD groups at hudPos, 0 = the N64's places */
+    float hudStartLights;       /* the start lights' size, 1.0 = the N64's */
+    int hudPos[5][2];           /* WM_HUD_*: top-left on a 1280x720 screen, -1 = the N64's */
 } WMTuning;
+
+/* The HUD groups the widescreen layout moves ([hud] in wm_tuning.ini) */
+enum { WM_HUD_SCORE, WM_HUD_TIME, WM_HUD_CARS, WM_HUD_MAP, WM_HUD_DAMAGE, WM_HUD_GROUPS };
 
 /* Weather kinds (WM_WeatherRoll / WM_WeatherPick) */
 enum {
@@ -113,6 +120,10 @@ void WM_WeatherFree(void);
 int WM_WeatherActive(void);
 int WM_WeatherStorm(void);
 void *WM_WeatherDraw(void *cam, void *gfx);
+/* Widescreen HUD: the offset a 2D element is drawn with (quarter N64 pixels) and its scale */
+void WM_HudOffset(int id, int *dx4, int *dy4);
+float WM_HudScale(int id);
+void WM_HudGroupOffset(int group, int *dx4, int *dy4);
 
 #ifdef __cplusplus
 }
