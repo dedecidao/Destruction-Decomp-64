@@ -14,7 +14,8 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 4 /* 4: random_weather disabled by default (snow-only on glacier) */
+#define WM_TUNING_VERSION 6 /* 6: [score_fx] and [weather] together (score_fx volume 1.45,
+                                 random_weather off by default: snow-only on glacier) */
 
 /*
  * Weather per race track, by the game's track id (D_800958B4). Ids 0-3 are the
@@ -69,6 +70,10 @@ static void setDefaults(WMTuning *t) {
     t->snowAlpha = 142;
     t->snowLift = 0.06f;
 
+    t->scoreFxEnabled = 1;
+    t->scoreFxScale = 2.35f;
+    t->scoreFxAudio = 1;
+    t->scoreFxVolume = 1.45f;
     /*
      * Initial random-weather attempt (rain, storms, synthesized thunder) is kept
      * intact in wm_weather.c / wm_thunder.c rather than discarded, but disabled
@@ -136,6 +141,11 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "snow_life = %d\n", t->snowLife);
     fprintf(f, "snow_alpha = %d\n", t->snowAlpha);
     fprintf(f, "snow_lift = %.2f\n", t->snowLift);
+    fprintf(f, "\n[score_fx]\n");
+    fprintf(f, "enabled = %d\n", t->scoreFxEnabled);
+    fprintf(f, "scale = %.2f\n", t->scoreFxScale);
+    fprintf(f, "audio = %d\n", t->scoreFxAudio);
+    fprintf(f, "volume = %.2f\n", t->scoreFxVolume);
     fprintf(f, "\n[weather]\n");
     fprintf(f, "; random_weather = 0 (default): new 3-layer parallax snow on the glacier only.\n");
     fprintf(f, "; Experimental rain/storm/thunder is kept in code for future refinement (set 1 to try).\n");
@@ -161,6 +171,18 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->enabled = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "tuning_version") == 0) {
             t->tuningVersion = atoi(val);
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "score_fx") == 0) {
+        if (SDL_strcasecmp(key, "enabled") == 0) {
+            t->scoreFxEnabled = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "scale") == 0) {
+            t->scoreFxScale = clampf((float)atof(val), 1.0f, 3.5f);
+        } else if (SDL_strcasecmp(key, "audio") == 0) {
+            t->scoreFxAudio = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "volume") == 0) {
+            t->scoreFxVolume = clampf((float)atof(val), 0.0f, 2.0f);
         }
         return;
     }
@@ -293,14 +315,20 @@ void WM_ReloadTuning(void) {
     SDL_free(data);
 
     if (sTuning.tuningVersion >= 2 && sTuning.tuningVersion < WM_TUNING_VERSION) {
-        /* v2 -> v3 added [weather]; v3 -> v4 disables random_weather by default while
-           keeping the new parallax snow on track 10 */
-        if (sTuning.tuningVersion == 3) {
+        if (sTuning.tuningVersion <= 4 && sTuning.scoreFxScale < 2.0f) {
+            sTuning.scoreFxScale = 2.35f;
+        }
+        if (sTuning.tuningVersion <= 4 && sTuning.scoreFxVolume < 1.35f) {
+            sTuning.scoreFxVolume = 1.45f;
+        }
+        /* [weather] arrived on with random weather (v3); it is off by default now, the
+           new parallax snow staying on track 10 */
+        if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
         }
         sTuning.tuningVersion = WM_TUNING_VERSION;
         writeDefaultIni(path, &sTuning);
-        Port_Log("wm_mod: updated [weather] in %s (v%d, random_weather=%d)", path,
+        Port_Log("wm_mod: updated [score_fx] and [weather] in %s (v%d, random_weather=%d)", path,
                  WM_TUNING_VERSION, sTuning.weatherRandom);
     } else if (sTuning.tuningVersion < WM_TUNING_VERSION) {
         int keepEnabled = sTuning.enabled;

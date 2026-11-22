@@ -40,6 +40,11 @@ typedef struct {
     int snowAlpha;
     float snowLift;
 
+    /* Score Dopamine HUD & procedural audio ([score_fx] in wm_tuning.ini) */
+    int scoreFxEnabled;         /* 1 = central green popup + countdown + audio */
+    float scoreFxScale;         /* base scale of the central score popup (1.0 - 2.5) */
+    int scoreFxAudio;           /* 1 = procedural tiered score audio */
+    float scoreFxVolume;        /* 0.0 - 1.5 relative to master volume */
     /* Weather ([weather] in wm_tuning.ini, port/game/wm_weather.c) */
     int weatherRandom;          /* 0 = the N64's weather (snow on track 10 only) */
     int weatherLayers;          /* 1-3 particle layers (parallax) */
@@ -70,6 +75,11 @@ float WM_BrakeLatGripMult(void);
 float WM_HandbrakeGripVal(void);
 float WM_HandbrakeDragMult(void);
 float WM_HandbrakeSlipVal(void);
+void WM_ScoreAudioOpen(void);
+void WM_ScoreAudioClose(void);
+void WM_ScoreAudioHit(int added, int pendingTotal);
+void WM_ScoreAudioTick(int remaining, int peak);
+void WM_ScoreAudioBanked(int peak);
 int WM_WeatherRoll(const int chance[WM_WEATHER_KINDS], unsigned int *rng);
 int WM_WeatherPick(int track, int gameType);
 const char *WM_WeatherName(int kind);
@@ -77,7 +87,7 @@ void WM_ThunderOpen(void);
 void WM_ThunderClose(void);
 void WM_ThunderPlay(float dist);
 
-/* Game-side hooks (port/game/wm_mod.c) */
+/* Game-side hooks (port/game/wm_mod.c, port/game/wm_score.c) */
 int WM_EmitWheelDust(void *car, void *a, void *b);
 int WM_EmitHoodSmoke(void *car, void *pos, void *mtx);
 int WM_CanInitAiSkid(void);
@@ -95,6 +105,9 @@ float WM_BrakeLatGripScale(void *car);
 float WM_HandbrakeLatGrip(void *car);
 float WM_HandbrakeLonDrag(void *car);
 float WM_HandbrakeSlipThreshold(void *car);
+void WM_ScoreReset(void);
+int WM_ScoreStep(int *curScore, int targetScore, int player);
+void *WM_ScoreDraw(void *gfxPtr);
 int WM_WeatherInit(void);
 void WM_WeatherFree(void);
 int WM_WeatherActive(void);
