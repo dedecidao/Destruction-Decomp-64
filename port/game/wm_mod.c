@@ -925,6 +925,66 @@ static WMGfx *wmDrawHBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, int 
     return g;
 }
 
+/* ---- LED pedal bars: segments lit along a ramp in the HUD's colours ---- */
+
+/* A colour on the ramp: t 0..1 through the stops (r g b) */
+static u32 wmRamp(const u8 (*stops)[3], int n, f32 t, u32 alpha) {
+    f32 p;
+    int i;
+    u32 r, gg, b;
+
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    p = t * (f32)(n - 1);
+    i = (int)p;
+    if (i >= n - 1) i = n - 2;
+    p -= (f32)i;
+    r = (u32)(stops[i][0] + (stops[i + 1][0] - stops[i][0]) * p);
+    gg = (u32)(stops[i][1] + (stops[i + 1][1] - stops[i][1]) * p);
+    b = (u32)(stops[i][2] + (stops[i + 1][2] - stops[i][2]) * p);
+    return (r << 24) | (gg << 16) | (b << 8) | (alpha & 0xFF);
+}
+
+/* Throttle: dark green, green, yellow, a white-hot tip. Brake: dark olive, yellow, white */
+static const u8 kRampGas[4][3] = { { 0x1A, 0x6A, 0x28 }, { 0x3C, 0xD2, 0x4A }, { 0xF2, 0xE6, 0x40 }, { 0xFF, 0xFF, 0xF0 } };
+static const u8 kRampBrake[4][3] = { { 0x5A, 0x54, 0x16 }, { 0xD8, 0xB8, 0x22 }, { 0xFF, 0xE6, 0x50 }, { 0xFF, 0xFF, 0xF0 } };
+
+#define WM_LED_SEGS 11
+
+/* 48x12: a dark panel, 11 segments of 3 with a 1 gap, lit from the left (or the right)
+   up to val, the edge segment lit in part; each lit segment has a glossy top line. Full,
+   the frame pulses; `hot` (the handbrake) turns the frame white */
+static WMGfx *wmDrawLedBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, int fromRight,
+                           const u8 (*ramp)[3], u32 frame, int hot) {
+    s32 i, sx;
+    f32 lit;
+    u32 border = 0x2A8A3AE0;
+
+    if (val < 0.0f) val = 0.0f;
+    if (val > 1.0f) val = 1.0f;
+    if (hot) {
+        border = 0xFFFFFFF0;
+    } else if (val >= 0.98f) {
+        border = (frame & 8) ? 0xC8FF70FF : 0x58E060F0; /* a slow blink at full */
+    }
+    g = wmRect(g, x0 + 1, y0 + 1, x1 - 1, y1 - 1, 0x06140AC8);
+    g = wmDrawFrame(g, x0, y0, x1, y1, border);
+    lit = val * (f32)WM_LED_SEGS;
+    for (i = 0; i < WM_LED_SEGS; i++) {
+        f32 on = lit - (f32)i; /* 1 lit, 0 dark, in between the edge */
+        u32 a;
+        sx = fromRight ? (x1 - 2 - 4 * i - 3) : (x0 + 2 + 4 * i);
+        if (on > 1.0f) on = 1.0f;
+        if (on < 0.0f) on = 0.0f;
+        a = 0x30 + (u32)(on * (f32)(0xFF - 0x30));
+        g = wmRect(g, sx, y0 + 2, sx + 3, y1 - 2, wmRamp(ramp, 4, (f32)i / (f32)(WM_LED_SEGS - 1), a));
+        if (on > 0.5f) {
+            g = wmRect(g, sx, y0 + 2, sx + 3, y0 + 3, 0xFFFFFF60); /* gloss */
+        }
+    }
+    return g;
+}
+
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     if (target > cur) {
         cur += (target - cur) * riseRate + 0.025f;
@@ -942,6 +1002,7 @@ static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
 
 void *WM_HudDraw(void *gfxPtr) {
     static f32 sSmoothT, sSmoothB;
+    static u32 sFrame;
     WMGfx *g = (WMGfx *)gfxPtr;
     WMCar *car;
     u16 btn = 0;
@@ -1013,13 +1074,12 @@ void *WM_HudDraw(void *gfxPtr) {
     }
     /* Side by side under the car, centred at 160, 199: T fills from the left toward the
        middle, B from the right toward the middle, the letters at the outer ends */
+    sFrame++;
     g = wmBeginRects(g);
-    g = wmDrawHBar(g, 109, 193, 157, 205, sSmoothT, 0,
-                   0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
-    g = wmDrawHBar(g, 163, 193, 211, 205, sSmoothB, 1,
-                   0x180608B8, handbrake ? 0xFFA228F0 : 0xFF5252E0, 0xF52828FF, 0xFF9A80FF);
-    g = wmDrawGlyphT(g, 98, 195, 0x62C2FFFF);
-    g = wmDrawGlyphB(g, 214, 195, 0xFF5858FF);
+    g = wmDrawLedBar(g, 109, 193, 157, 205, sSmoothT, 0, kRampGas, sFrame, 0);
+    g = wmDrawLedBar(g, 163, 193, 211, 205, sSmoothB, 1, kRampBrake, sFrame, handbrake);
+    g = wmDrawGlyphT(g, 98, 195, 0x5CFF6AFF);
+    g = wmDrawGlyphB(g, 214, 195, 0xFFE14AFF);
     WM_GFX2(g, 0xE7000000, 0);
     if (hudDx4 != 0) {
         WM_GFX2(g, 0x00490000, 4096); /* the scale and offset back off */
