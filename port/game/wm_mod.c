@@ -750,7 +750,7 @@ static int hudGroupOf(int id) {
     if (id >= 14 && id <= 29) { /* RADAR_SP, CAR_RADAR_USER0..AI10_SP */
         return WM_HUD_MAP;
     }
-    if (id >= 40 && id <= 55) { /* HEALTH_*_SP, WIRE_*_SP */
+    if ((id >= 40 && id <= 55) || (id >= 228 && id <= 259)) { /* HEALTH_*, WIRE_*, IMPACT_* (the hit flashes) */
         return WM_HUD_DAMAGE;
     }
     return -1;
