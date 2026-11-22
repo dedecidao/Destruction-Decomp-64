@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 4 /* 4: larger score_fx scale (2.35) */
+#define WM_TUNING_VERSION 5 /* 5: punchier default score_fx volume (1.45) */
 
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
@@ -49,7 +49,7 @@ static void setDefaults(WMTuning *t) {
     t->scoreFxEnabled = 1;
     t->scoreFxScale = 2.35f;
     t->scoreFxAudio = 1;
-    t->scoreFxVolume = 1.0f;
+    t->scoreFxVolume = 1.45f;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -132,7 +132,7 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
         } else if (SDL_strcasecmp(key, "audio") == 0) {
             t->scoreFxAudio = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "volume") == 0) {
-            t->scoreFxVolume = clampf((float)atof(val), 0.0f, 1.5f);
+            t->scoreFxVolume = clampf((float)atof(val), 0.0f, 2.0f);
         }
         return;
     }
@@ -247,8 +247,11 @@ void WM_ReloadTuning(void) {
     SDL_free(data);
 
     if (sTuning.tuningVersion >= 2 && sTuning.tuningVersion < WM_TUNING_VERSION) {
-        if (sTuning.tuningVersion == 3 && sTuning.scoreFxScale < 2.0f) {
+        if (sTuning.tuningVersion <= 4 && sTuning.scoreFxScale < 2.0f) {
             sTuning.scoreFxScale = 2.35f;
+        }
+        if (sTuning.tuningVersion <= 4 && sTuning.scoreFxVolume < 1.35f) {
+            sTuning.scoreFxVolume = 1.45f;
         }
         sTuning.tuningVersion = WM_TUNING_VERSION;
         writeDefaultIni(path, &sTuning);

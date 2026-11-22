@@ -1,9 +1,10 @@
 /*
  * Wrecked Metal procedural score audio (port/src/wm_score_audio.c).
  *
- * Synthesizes tiered arcade hit chords, rising-pitch countdown ticks, and a
- * confirmation chime on the fly using a lightweight SDL3 audio stream. Zero ROM
- * assets, minimal CPU cost, and inactive in Play Fidelity mode.
+ * Synthesizes punchy, high-presence tiered arcade hit chords, frenetic
+ * rising-pitch countdown ticks, and a resonant confirmation bell on the fly
+ * using a dedicated SDL3 audio stream. Zero ROM assets, minimal CPU cost,
+ * and inactive in Play Fidelity mode.
  */
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -20,16 +21,17 @@ static SDL_AudioStream *sOut;
 static s16 sPcm[SCORE_MAX_SAMPLES];
 static Uint64 sLastTickMs;
 
-static float softClip(float x) {
-    float ax = x < 0.0f ? -x : x;
-    return x / (1.0f + ax);
+static float saturateDrive(float x, float drive) {
+    float d = x * drive;
+    float ax = d < 0.0f ? -d : d;
+    return d / (1.0f + ax);
 }
 
 static float streamGain(void) {
     const WMTuning *t = WM_GetTuning();
     float master = (float)SDL_clamp(gPortConfig.volume, 0, 100) / 100.0f;
-    float fx = SDL_clamp(t->scoreFxVolume, 0.0f, 1.5f);
-    return SDL_clamp(master * fx, 0.0f, 1.5f);
+    float fx = SDL_clamp(t->scoreFxVolume, 0.0f, 2.0f);
+    return SDL_clamp(master * fx, 0.0f, 2.0f);
 }
 
 static int ensureStream(void) {
@@ -45,21 +47,14 @@ static int ensureStream(void) {
 }
 
 static void submitPcm(int count, float gain) {
-    int i;
-
     if (sOut == NULL || count <= 0) {
         return;
     }
     if (count > SCORE_MAX_SAMPLES) {
         count = SCORE_MAX_SAMPLES;
     }
-    for (i = 0; i < count; i++) {
-        /* keep headroom so s16 never wraps */
-        float v = sPcm[i] * (1.0f / 32767.0f);
-        sPcm[i] = (s16)SDL_clamp(v * 32767.0f, -32767.0f, 32767.0f);
-    }
-    /* Never let old sounds pile up in the queue */
-    if (SDL_GetAudioStreamQueued(sOut) > (int)(SCORE_RATE * sizeof(s16) / 3)) {
+    /* Keep latency razor-sharp: clear stale tail if queue exceeds ~120 ms */
+    if (SDL_GetAudioStreamQueued(sOut) > (int)(SCORE_RATE * sizeof(s16) / 8)) {
         SDL_ClearAudioStream(sOut);
     }
     SDL_SetAudioStreamGain(sOut, gain);
@@ -114,79 +109,54 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
     }
 
     if (tier == 1) {
-        /* Tier 1 (1-15 pts): crisp rising arcade blip (~90 ms) */
-        float ph1 = 0.0f, ph2 = 0.0f;
-        float env = 1.0f, envK = expf(-1.0f / (SCORE_RATE * 0.032f));
-        n = (SCORE_RATE * 90) / 1000;
+        /* Tier 1 (1-15 pts): punchy arcade coin/pop with bright harmonics (~110 ms) */
+        float ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f;
+        float env = 1.0f, envK = expf(-1.0f / (SCORE_RATE * 0.042f));
+        n = (SCORE_RATE * 110) / 1000;
         for (i = 0; i < n; i++) {
             float t = (float)i / (float)n;
-            float f = 660.0f + 240.0f * t;
-            float atk = i < 48 ? (float)i / 48.0f : 1.0f;
-            float s = (sinf(ph1) * 0.72f + sinf(ph2) * 0.28f) * env * atk * 0.55f;
+            float f = 784.0f + 392.0f * (t < 0.35f ? t / 0.35f : 1.0f);
+            float atk = i < 24 ? (float)i / 24.0f : 1.0f;
+            float click = i < 40 ? (1.0f - (float)i / 40.0f) * 0.35f : 0.0f;
+            float s = (sinf(ph1) * 0.65f + sinf(ph2) * 0.30f + sinf(ph3) * 0.15f) * env * atk + click;
             ph1 += TWO_PI * f / SCORE_RATE;
             ph2 += TWO_PI * (f * 2.0f) / SCORE_RATE;
+            ph3 += TWO_PI * (f * 3.0f) / SCORE_RATE;
             env *= envK;
-            sPcm[i] = (s16)(softClip(s) * 32767.0f);
+            sPcm[i] = (s16)(saturateDrive(s, 1.75f) * 32767.0f);
         }
     } else if (tier == 2) {
-        /* Tier 2 (16-40 pts): bright metallic power chord (~160 ms) */
-        float ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f;
-        float env = 1.0f, envK = expf(-1.0f / (SCORE_RATE * 0.055f));
-        n = (SCORE_RATE * 160) / 1000;
+        /* Tier 2 (16-40 pts): chest-punch + bright metallic power chord (~190 ms) */
+        float phSub = 0.0f, ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f;
+        float subEnv = 1.0f, subK = expf(-1.0f / (SCORE_RATE * 0.045f));
+        float env = 1.0f, envK = expf(-1.0f / (SCORE_RATE * 0.068f));
+        n = (SCORE_RATE * 190) / 1000;
         for (i = 0; i < n; i++) {
-            float atk = i < 44 ? (float)i / 44.0f : 1.0f;
-            float s = (sinf(ph1) * 0.45f + sinf(ph2) * 0.35f + sinf(ph3) * 0.25f) * env * atk * 0.65f;
+            float atk = i < 24 ? (float)i / 24.0f : 1.0f;
+            float fSub = 145.0f - 85.0f * ((float)i / (float)n);
+            float chord = (sinf(ph1) * 0.45f + sinf(ph2) * 0.35f + sinf(ph3) * 0.30f) * env;
+            float s = (sinf(phSub) * subEnv * 0.55f + chord) * atk;
+            phSub += TWO_PI * fSub / SCORE_RATE;
             ph1 += TWO_PI * 523.25f / SCORE_RATE;  /* C5 */
             ph2 += TWO_PI * 783.99f / SCORE_RATE;  /* G5 */
             ph3 += TWO_PI * 1046.50f / SCORE_RATE; /* C6 */
+            subEnv *= subK;
             env *= envK;
-            sPcm[i] = (s16)(softClip(s) * 32767.0f);
+            sPcm[i] = (s16)(saturateDrive(s, 1.85f) * 32767.0f);
         }
     } else if (tier == 3) {
-        /* Tier 3 (41-99 pts): punchy sub-bass + 3-note rising arpeggio (~230 ms) */
-        static const float kNotes3[3] = { 523.25f, 659.25f, 783.99f }; /* C5 E5 G5 */
-        float phSub = 0.0f, phNote = 0.0f, phHarm = 0.0f;
-        float subEnv = 1.0f, subK = expf(-1.0f / (SCORE_RATE * 0.045f));
+        /* Tier 3 (41-99 pts): heavy sub-bass punch + frenetic 4-note arpeggio (~260 ms) */
+        static const float kNotes4[4] = { 523.25f, 659.25f, 783.99f, 1046.50f };
+        float phSub = 0.0f, phNote = 0.0f, phHarm = 0.0f, phOct = 0.0f;
+        float subEnv = 1.0f, subK = expf(-1.0f / (SCORE_RATE * 0.055f));
         float noteEnv = 1.0f, noteK = expf(-1.0f / (SCORE_RATE * 0.065f));
-        int stepLen = (SCORE_RATE * 55) / 1000;
+        int stepLen = (SCORE_RATE * 46) / 1000;
         int prevStep = -1;
-        n = (SCORE_RATE * 230) / 1000;
+        n = (SCORE_RATE * 260) / 1000;
         for (i = 0; i < n; i++) {
             int step = i / stepLen;
-            float fSub = 120.0f - 65.0f * ((float)i / (float)n);
-            float fNote;
-            float s;
-            if (step > 2) {
-                step = 2;
-            }
-            if (step != prevStep) {
-                noteEnv = 1.0f;
-                prevStep = step;
-            }
-            fNote = kNotes3[step];
-            s = sinf(phSub) * subEnv * 0.50f +
-                (sinf(phNote) * 0.65f + sinf(phHarm) * 0.30f) * noteEnv * 0.45f;
-            phSub += TWO_PI * fSub / SCORE_RATE;
-            phNote += TWO_PI * fNote / SCORE_RATE;
-            phHarm += TWO_PI * (fNote * 2.0f) / SCORE_RATE;
-            subEnv *= subK;
-            noteEnv *= noteK;
-            sPcm[i] = (s16)(softClip(s) * 32767.0f);
-        }
-    } else {
-        /* Tier 4 (100+ pts, Mega Crash): deep sub-bass + 4-note jackpot cascade (~330 ms) */
-        static const float kNotes4[4] = { 523.25f, 659.25f, 783.99f, 1046.50f }; /* C5 E5 G5 C6 */
-        float phSub = 0.0f, phNote = 0.0f, phHarm = 0.0f;
-        float subEnv = 1.0f, subK = expf(-1.0f / (SCORE_RATE * 0.065f));
-        float noteEnv = 1.0f, noteK = expf(-1.0f / (SCORE_RATE * 0.080f));
-        int stepLen = (SCORE_RATE * 55) / 1000;
-        int prevStep = -1;
-        n = (SCORE_RATE * 330) / 1000;
-        for (i = 0; i < n; i++) {
-            int step = i / stepLen;
-            float fSub = 135.0f - 85.0f * ((float)i / (float)n);
-            float fNote;
-            float s;
+            float fSub = 150.0f - 95.0f * ((float)i / (float)n);
+            float fNote, s;
             if (step > 3) {
                 step = 3;
             }
@@ -195,14 +165,46 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
                 prevStep = step;
             }
             fNote = kNotes4[step];
-            s = sinf(phSub) * subEnv * 0.55f +
-                (sinf(phNote) * 0.60f + sinf(phHarm) * 0.35f) * noteEnv * 0.55f;
+            s = sinf(phSub) * subEnv * 0.65f +
+                (sinf(phNote) * 0.60f + sinf(phHarm) * 0.35f + sinf(phOct) * 0.20f) * noteEnv * 0.65f;
             phSub += TWO_PI * fSub / SCORE_RATE;
             phNote += TWO_PI * fNote / SCORE_RATE;
             phHarm += TWO_PI * (fNote * 2.0f) / SCORE_RATE;
+            phOct += TWO_PI * (fNote * 3.0f) / SCORE_RATE;
             subEnv *= subK;
             noteEnv *= noteK;
-            sPcm[i] = (s16)(softClip(s) * 32767.0f);
+            sPcm[i] = (s16)(saturateDrive(s, 1.90f) * 32767.0f);
+        }
+    } else {
+        /* Tier 4 (100+ pts, Mega Crash): seismic punch + 5-note hyper jackpot cascade (~360 ms) */
+        static const float kNotes5[5] = { 523.25f, 659.25f, 783.99f, 1046.50f, 1567.98f };
+        float phSub = 0.0f, phNote = 0.0f, phHarm = 0.0f, phOct = 0.0f;
+        float subEnv = 1.0f, subK = expf(-1.0f / (SCORE_RATE * 0.075f));
+        float noteEnv = 1.0f, noteK = expf(-1.0f / (SCORE_RATE * 0.075f));
+        int stepLen = (SCORE_RATE * 44) / 1000;
+        int prevStep = -1;
+        n = (SCORE_RATE * 360) / 1000;
+        for (i = 0; i < n; i++) {
+            int step = i / stepLen;
+            float fSub = 165.0f - 115.0f * ((float)i / (float)n);
+            float fNote, s;
+            if (step > 4) {
+                step = 4;
+            }
+            if (step != prevStep) {
+                noteEnv = 1.0f;
+                prevStep = step;
+            }
+            fNote = kNotes5[step];
+            s = sinf(phSub) * subEnv * 0.72f +
+                (sinf(phNote) * 0.58f + sinf(phHarm) * 0.36f + sinf(phOct) * 0.24f) * noteEnv * 0.72f;
+            phSub += TWO_PI * fSub / SCORE_RATE;
+            phNote += TWO_PI * fNote / SCORE_RATE;
+            phHarm += TWO_PI * (fNote * 2.0f) / SCORE_RATE;
+            phOct += TWO_PI * (fNote * 3.0f) / SCORE_RATE;
+            subEnv *= subK;
+            noteEnv *= noteK;
+            sPcm[i] = (s16)(saturateDrive(s, 2.00f) * 32767.0f);
         }
     }
 
@@ -211,13 +213,14 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
 
 void WM_ScoreAudioTick(int remaining, int peak) {
     Uint64 now = SDL_GetTicks();
-    float progress, freq, ph = 0.0f, env = 1.0f, envK, gain;
+    float progress, freq, ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f;
+    float env = 1.0f, envK, gain;
     int n, i;
 
     if (!ensureStream()) {
         return;
     }
-    if (now - sLastTickMs < 28) {
+    if (now - sLastTickMs < 16) {
         return;
     }
     sLastTickMs = now;
@@ -225,8 +228,8 @@ void WM_ScoreAudioTick(int remaining, int peak) {
     if (gain <= 0.001f) {
         return;
     }
-    /* Avoid piling ticks behind a hit chord */
-    if (SDL_GetAudioStreamQueued(sOut) > (int)(SCORE_RATE * sizeof(s16) / 6)) {
+    /* Let a big hit chord finish its initial transient (~65 ms) before ticks cut in */
+    if (SDL_GetAudioStreamQueued(sOut) > (int)(SCORE_RATE * sizeof(s16) / 10)) {
         return;
     }
 
@@ -234,39 +237,43 @@ void WM_ScoreAudioTick(int remaining, int peak) {
         peak = 1;
     }
     progress = 1.0f - SDL_clamp((float)remaining / (float)peak, 0.0f, 1.0f);
-    freq = 540.0f + progress * 540.0f; /* 540 Hz -> 1080 Hz as it drains */
-    n = (SCORE_RATE * 26) / 1000;
-    envK = expf(-1.0f / (SCORE_RATE * 0.009f));
+    freq = 587.33f + progress * 892.67f; /* D5 (587 Hz) -> ~F#6 (1480 Hz) frenetic climb */
+    n = (SCORE_RATE * 30) / 1000;
+    envK = expf(-1.0f / (SCORE_RATE * 0.011f));
     for (i = 0; i < n; i++) {
-        float atk = i < 24 ? (float)i / 24.0f : 1.0f;
-        float s = sinf(ph) * env * atk * 0.38f;
-        ph += TWO_PI * freq / SCORE_RATE;
+        float atk = i < 16 ? (float)i / 16.0f : 1.0f;
+        float click = i < 24 ? (1.0f - (float)i / 24.0f) * 0.25f : 0.0f;
+        float s = (sinf(ph1) * 0.62f + sinf(ph2) * 0.28f + sinf(ph3) * 0.16f) * env * atk + click;
+        ph1 += TWO_PI * freq / SCORE_RATE;
+        ph2 += TWO_PI * (freq * 2.0f) / SCORE_RATE;
+        ph3 += TWO_PI * (freq * 3.0f) / SCORE_RATE;
         env *= envK;
-        sPcm[i] = (s16)(s * 32767.0f);
+        sPcm[i] = (s16)(saturateDrive(s, 1.75f) * 32767.0f);
     }
     submitPcm(n, gain);
 }
 
 void WM_ScoreAudioBanked(int peak) {
-    float ph1 = 0.0f, ph2 = 0.0f, env = 1.0f, envK, gain;
+    float ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f, env = 1.0f, envK, gain;
     int n, i;
 
-    if (!ensureStream() || peak < 15) {
+    if (!ensureStream() || peak < 5) {
         return;
     }
     gain = streamGain();
     if (gain <= 0.001f) {
         return;
     }
-    n = (SCORE_RATE * 130) / 1000;
-    envK = expf(-1.0f / (SCORE_RATE * 0.045f));
+    n = (SCORE_RATE * 170) / 1000;
+    envK = expf(-1.0f / (SCORE_RATE * 0.060f));
     for (i = 0; i < n; i++) {
-        float atk = i < 32 ? (float)i / 32.0f : 1.0f;
-        float s = (sinf(ph1) * 0.6f + sinf(ph2) * 0.4f) * env * atk * 0.48f;
+        float atk = i < 20 ? (float)i / 20.0f : 1.0f;
+        float s = (sinf(ph1) * 0.50f + sinf(ph2) * 0.35f + sinf(ph3) * 0.25f) * env * atk;
         ph1 += TWO_PI * 1046.50f / SCORE_RATE; /* C6 */
         ph2 += TWO_PI * 1567.98f / SCORE_RATE; /* G6 */
+        ph3 += TWO_PI * 2093.00f / SCORE_RATE; /* C7 */
         env *= envK;
-        sPcm[i] = (s16)(softClip(s) * 32767.0f);
+        sPcm[i] = (s16)(saturateDrive(s, 1.80f) * 32767.0f);
     }
     submitPcm(n, gain);
 }
