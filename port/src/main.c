@@ -16,6 +16,7 @@
 #include "port.h"
 #include "port_config.h"
 #include "port_raphnet.h"
+#include "wm_mod.h"
 
 void boot(void);
 
@@ -215,6 +216,7 @@ int main(int argc, char **argv) {
     }
 
     Port_RaphnetStop();
+    WM_ScoreAudioClose();
     SDL_Quit();
     return 0;
 }

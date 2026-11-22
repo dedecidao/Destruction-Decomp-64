@@ -39,6 +39,12 @@ typedef struct {
     int snowLife;
     int snowAlpha;
     float snowLift;
+
+    /* Score Dopamine HUD & procedural audio ([score_fx] in wm_tuning.ini) */
+    int scoreFxEnabled;         /* 1 = central green popup + countdown + audio */
+    float scoreFxScale;         /* base scale of the central score popup (1.0 - 2.5) */
+    int scoreFxAudio;           /* 1 = procedural tiered score audio */
+    float scoreFxVolume;        /* 0.0 - 1.5 relative to master volume */
 } WMTuning;
 
 /* Host-side tuning API (port/src/wm_tuning.c) */
@@ -54,8 +60,13 @@ float WM_BrakeLatGripMult(void);
 float WM_HandbrakeGripVal(void);
 float WM_HandbrakeDragMult(void);
 float WM_HandbrakeSlipVal(void);
+void WM_ScoreAudioOpen(void);
+void WM_ScoreAudioClose(void);
+void WM_ScoreAudioHit(int added, int pendingTotal);
+void WM_ScoreAudioTick(int remaining, int peak);
+void WM_ScoreAudioBanked(int peak);
 
-/* Game-side hooks (port/game/wm_mod.c) */
+/* Game-side hooks (port/game/wm_mod.c, port/game/wm_score.c) */
 int WM_EmitWheelDust(void *car, void *a, void *b);
 int WM_EmitHoodSmoke(void *car, void *pos, void *mtx);
 int WM_CanInitAiSkid(void);
@@ -73,6 +84,9 @@ float WM_BrakeLatGripScale(void *car);
 float WM_HandbrakeLatGrip(void *car);
 float WM_HandbrakeLonDrag(void *car);
 float WM_HandbrakeSlipThreshold(void *car);
+void WM_ScoreReset(void);
+int WM_ScoreStep(int *curScore, int targetScore, int player);
+void *WM_ScoreDraw(void *gfxPtr);
 
 #ifdef __cplusplus
 }

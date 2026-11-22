@@ -830,21 +830,21 @@ void *WM_HudDraw(void *gfxPtr) {
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
-        return gfxPtr;
+        return WM_ScoreDraw(gfxPtr);
     }
     if (gGame->x10FC != 0x1B && gGame->x10FC != 0x1C) {
         if (gGame->x10FC != 0x1F && gGame->x10FC != 0x20) {
             sSmoothT = 0.0f;
             sSmoothB = 0.0f;
         }
-        return gfxPtr;
+        return WM_ScoreDraw(gfxPtr);
     }
 
     car = (WMCar *)D_800958F0[0].x0;
     if (car == NULL || car->wrecked) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
-        return gfxPtr;
+        return WM_ScoreDraw(gfxPtr);
     }
 
     if (car->isAi == 0 && car->playerInfo != NULL) {
@@ -879,5 +879,5 @@ void *WM_HudDraw(void *gfxPtr) {
     g = wmDrawGlyphT(g, 230, 173, 0x62C2FFFF);
     g = wmDrawGlyphB(g, 245, 173, 0xFF5858FF);
     WM_GFX2(g, 0xE7000000, 0);
-    return g;
+    return WM_ScoreDraw(g);
 }

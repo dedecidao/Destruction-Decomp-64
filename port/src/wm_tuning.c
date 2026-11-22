@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 2
+#define WM_TUNING_VERSION 3 /* 3: [score_fx] */
 
 static void setDefaults(WMTuning *t) {
     t->enabled = 1;
@@ -45,6 +45,11 @@ static void setDefaults(WMTuning *t) {
     t->snowLife = 18;
     t->snowAlpha = 142;
     t->snowLift = 0.06f;
+
+    t->scoreFxEnabled = 1;
+    t->scoreFxScale = 1.60f;
+    t->scoreFxAudio = 1;
+    t->scoreFxVolume = 1.0f;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -102,6 +107,11 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "snow_life = %d\n", t->snowLife);
     fprintf(f, "snow_alpha = %d\n", t->snowAlpha);
     fprintf(f, "snow_lift = %.2f\n", t->snowLift);
+    fprintf(f, "\n[score_fx]\n");
+    fprintf(f, "enabled = %d\n", t->scoreFxEnabled);
+    fprintf(f, "scale = %.2f\n", t->scoreFxScale);
+    fprintf(f, "audio = %d\n", t->scoreFxAudio);
+    fprintf(f, "volume = %.2f\n", t->scoreFxVolume);
     fclose(f);
 }
 
@@ -111,6 +121,18 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->enabled = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "tuning_version") == 0) {
             t->tuningVersion = atoi(val);
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "score_fx") == 0) {
+        if (SDL_strcasecmp(key, "enabled") == 0) {
+            t->scoreFxEnabled = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "scale") == 0) {
+            t->scoreFxScale = clampf((float)atof(val), 1.0f, 2.5f);
+        } else if (SDL_strcasecmp(key, "audio") == 0) {
+            t->scoreFxAudio = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "volume") == 0) {
+            t->scoreFxVolume = clampf((float)atof(val), 0.0f, 1.5f);
         }
         return;
     }
@@ -224,7 +246,11 @@ void WM_ReloadTuning(void) {
     }
     SDL_free(data);
 
-    if (sTuning.tuningVersion < WM_TUNING_VERSION) {
+    if (sTuning.tuningVersion >= 2 && sTuning.tuningVersion < WM_TUNING_VERSION) {
+        sTuning.tuningVersion = WM_TUNING_VERSION;
+        writeDefaultIni(path, &sTuning);
+        Port_Log("wm_mod: added [score_fx] to %s (v%d)", path, WM_TUNING_VERSION);
+    } else if (sTuning.tuningVersion < WM_TUNING_VERSION) {
         int keepEnabled = sTuning.enabled;
         setDefaults(&sTuning);
         sTuning.enabled = keepEnabled;

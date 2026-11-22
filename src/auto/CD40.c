@@ -84,12 +84,35 @@ s32 Hud_UpdateScoreCounter(void *arg0, s8 p)
         D_8011EF08[p].x20 = pos[1];
         sprintf(D_80123BA8[p], D_800B81C4, D_8011EF08[p].x40);
         Ui_SetElementPos(gUi[0], 0, idsA.v[p], 350.0f, pos[1]);
+#ifdef TARGET_PC
+        if (p == 0) {
+            void WM_ScoreReset(void);
+            WM_ScoreReset();
+        }
+#endif
     }
 
     if (w->x10 == 1)
         target = D_800958F0[p].x0->x18 + D_800958F0[p].x0->x20;
     else
         target = D_800958F0[p].x0->x18 + D_800958F0[p].x0->x1C;
+
+#ifdef TARGET_PC
+    {
+        int WM_ScoreStep(int *, int, int);
+        if (p == 0 && WM_ScoreStep(&D_8011EF08[p].cur, target, p)) {
+            sprintf(D_801255D0[p], D_800B81C4, D_8011EF08[p].cur);
+            if (D_8011EF08[p].x18) {
+                Ui_SetElementPos(gUi[0], 0, idsA.v[p], 350.0f, D_8011EF08[p].x20);
+                Ui_SetElementPos(gUi[0], 2, idsB.v[p], 350.0f, D_8011EF08[p].x28);
+                D_8011EF08[p].x18 = 0;
+                D_8011EF08[p].x40 = 0;
+            }
+            D_8011EF08[p].counting = 0;
+            return 0;
+        }
+    }
+#endif
 
     now = Time_Get(((GameT *)gGame)->x10A8);
     if (D_8011EF08[p].cur < target) {
