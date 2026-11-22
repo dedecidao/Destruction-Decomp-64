@@ -111,6 +111,8 @@ void Port_VideoInit(void) {
     gfx_draw_distance = gPortConfig.drawDistance >= 1 ? gPortConfig.drawDistance : 1;
     gfx_internal_height = gPortConfig.internalHeight;
     gfx_aspect_mode = gPortConfig.stretch ? 1 : gPortConfig.widescreen ? 2 : 0;
+    gfx_crt = gPortConfig.crt != 0;
+    gfx_crt_curvature = gPortConfig.crtCurvature != 0;
     gfx_init(&set);
     gfx_set_vsync(gPortConfig.vsync);
     gfx_set_texture_filter(gPortConfig.textureFilter);
@@ -131,6 +133,8 @@ void Port_VideoApplySettings(void) {
     gfx_set_vsync(gPortConfig.vsync);
     gfx_set_texture_filter(gPortConfig.textureFilter);
     gfx_seamless_sky = gPortConfig.seamlessSky != 0;
+    gfx_crt = gPortConfig.crt != 0;
+    gfx_crt_curvature = gPortConfig.crtCurvature != 0;
     {
         /* [video] hd_fonts: glyphs already uploaded load again, from whichever art */
         static int sHdFonts = -1;

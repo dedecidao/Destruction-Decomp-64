@@ -1177,6 +1177,8 @@ static void vi_pass(int which, SDL_GPUTexture* src, SDL_GPUTexture* dst, const v
     SDL_EndGPURenderPass(pass);
 }
 
+static bool crt_failed;
+
 static void gfx_sdlgpu_resolve_n64_aa(int fb_dst, int fb_src) {
     if (fb_src <= 0 || fb_src >= (int)framebuffers.size() || fb_dst < 0 || fb_dst >= (int)framebuffers.size()) {
         return;
@@ -1187,6 +1189,14 @@ static void gfx_sdlgpu_resolve_n64_aa(int fb_dst, int fb_src) {
     if (src.msaa <= 1 || !src.msaa_sampled || !vi_init()) {
         gfx_sdlgpu_resolve_msaa_color_buffer(fb_dst, fb_src); /* the plain resolve */
         return;
+    }
+    /* With the CRT filter the VI's image goes straight to the swapchain too (the
+       direct present, as present_to_window's plain resolve does), where the filter
+       draws it; the soft resample below would only be undone by it */
+    const bool crt_direct = gfx_crt && !crt_failed && fb_dst == 0 && current_framebuffer == 0 &&
+                            pass_draws.empty() && pending_clear_color;
+    if (crt_direct) {
+        pending_clear_color = pending_clear_depth = false;
     }
     flush_pass();
     if (vi_w != src.width || vi_h != src.height) {
@@ -1208,9 +1218,20 @@ static void gfx_sdlgpu_resolve_n64_aa(int fb_dst, int fb_src) {
         float strength[4];
     } u2 = { { (int32_t)src.width, (int32_t)src.height, 0, 0 }, { vi_strength(), 0.0f, 0.0f, 0.0f } };
     vi_pass(1, vi_tex[0], vi_tex[1], &u2, sizeof(u2));
+    int x0, x1;
+    if (crt_direct) {
+        present_x(0, dst.width, &x0, &x1);
+        direct.src = vi_tex[1];
+        direct.sw = src.width;
+        direct.sh = src.height;
+        direct.x0 = x0;
+        direct.x1 = x1;
+        direct.counter = -1;
+        direct.on = true;
+        return;
+    }
     /* present: the soft resample to the destination */
     static int soft = -1;
-    int x0, x1;
     if (soft < 0) {
         const char* e = getenv("DD64_N64AA_SOFT");
         soft = (e && e[0] == '0') ? 0 : 1;
@@ -1218,6 +1239,144 @@ static void gfx_sdlgpu_resolve_n64_aa(int fb_dst, int fb_src) {
     present_x(fb_dst, dst.width, &x0, &x1);
     blit(vi_tex[1], src.width, src.height, dst.color, x0, 0, x1 - x0, (int)dst.height,
          soft ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST, SDL_FLIP_NONE);
+}
+
+/* ---- The CRT filter ([video] crt): two passes at the swap ---- */
+
+/*
+ * shaders/crt_down.frag, then shaders/crt.frag (after the libretro shaders'
+ * public-domain crt-lottes): the game's image box-filtered down to the
+ * virtual screen (the N64's 240 lines), then that drawn onto the swapchain as
+ * a tube TV would show it - beams, a light bloom, an aperture grille, the
+ * curvature if asked - at the swapchain's own size, so the lines and the
+ * grille fall on real pixels. It runs on the direct present (the game's image
+ * straight onto the swapchain), so the FPS counter is drawn on top, sharp.
+ * Its cost: about 13 taps a pixel, most from the small virtual screen.
+ */
+static SDL_GPUShader *crt_vs, *crt_fs[2];
+static SDL_GPUGraphicsPipeline* crt_pipe[2]; /* 0: down to the virtual screen, 1: onto the swapchain */
+static SDL_GPUTextureFormat crt_lines_format, crt_sc_format = SDL_GPU_TEXTUREFORMAT_INVALID;
+static SDL_GPUSampler* crt_sampler;
+static SDL_GPUTexture* crt_lines;
+static uint32_t crt_lw, crt_lh;
+
+static SDL_GPUGraphicsPipeline* crt_pipeline(SDL_GPUShader* fs, SDL_GPUTextureFormat format) {
+    SDL_GPUColorTargetDescription ctd;
+    SDL_GPUGraphicsPipelineCreateInfo ci;
+    SDL_zero(ctd);
+    SDL_zero(ci);
+    ctd.format = format;
+    ci.vertex_shader = crt_vs;
+    ci.fragment_shader = fs;
+    ci.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    ci.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    ci.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+    ci.target_info.color_target_descriptions = &ctd;
+    ci.target_info.num_color_targets = 1;
+    return SDL_CreateGPUGraphicsPipeline(dev, &ci);
+}
+
+static bool crt_init(SDL_GPUTextureFormat sc_format) {
+    if (crt_failed) {
+        return false;
+    }
+    if (crt_pipe[0] == NULL) {
+        const SDL_GPUTextureUsageFlags use = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        crt_vs = make_shader(vi_vert_spv, sizeof(vi_vert_spv), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
+        crt_fs[0] = make_shader(crt_down_frag_spv, sizeof(crt_down_frag_spv), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        crt_fs[1] = make_shader(crt_frag_spv, sizeof(crt_frag_spv), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        /* the virtual screen holds linear light: 16-bit float where it can, so the dark end keeps its steps */
+        crt_lines_format = SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                                                        SDL_GPU_TEXTURETYPE_2D, use)
+                               ? SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT
+                               : COLOR_FORMAT;
+        SDL_GPUSamplerCreateInfo si;
+        SDL_zero(si);
+        si.min_filter = si.mag_filter = SDL_GPU_FILTER_LINEAR;
+        si.address_mode_u = si.address_mode_v = si.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+        crt_sampler = SDL_CreateGPUSampler(dev, &si);
+        if (crt_vs != NULL && crt_fs[0] != NULL && crt_fs[1] != NULL) {
+            crt_pipe[0] = crt_pipeline(crt_fs[0], crt_lines_format);
+        }
+        if (crt_pipe[0] == NULL || crt_sampler == NULL) {
+            sysLogPrintf(LOG_ERROR, "CRT filter: failed to set up (%s) - off", SDL_GetError());
+            crt_failed = true;
+            return false;
+        }
+        sysLogPrintf(LOG_NOTE, "CRT filter: ready (%s virtual screen)",
+                     crt_lines_format == COLOR_FORMAT ? "8-bit" : "16-bit float");
+    }
+    if (crt_pipe[1] == NULL || crt_sc_format != sc_format) {
+        if (crt_pipe[1] != NULL) {
+            SDL_ReleaseGPUGraphicsPipeline(dev, crt_pipe[1]);
+        }
+        crt_pipe[1] = crt_pipeline(crt_fs[1], sc_format);
+        crt_sc_format = sc_format;
+        if (crt_pipe[1] == NULL) {
+            sysLogPrintf(LOG_ERROR, "CRT filter: no pipeline for the swapchain (%s) - off", SDL_GetError());
+            crt_failed = true;
+            return false;
+        }
+    }
+    return true;
+}
+
+/* src (bottom row first, as the direct present holds it) through the filter
+   into sc's columns x0..x1 (the bars beside them cleared when `clear`) */
+static bool crt_present(SDL_GPUTexture* src, SDL_GPUTexture* sc, int x0, int x1, uint32_t h, bool clear) {
+    uint32_t cols, lines;
+    gfx_crt_virtual((uint32_t)(x1 - x0), h, &cols, &lines);
+    if (crt_lines == NULL || crt_lw != cols || crt_lh != lines) {
+        if (crt_lines != NULL) {
+            SDL_ReleaseGPUTexture(dev, crt_lines);
+        }
+        crt_lines = make_texture(cols, lines, 1, crt_lines_format,
+                                 SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER, 1);
+        crt_lw = cols;
+        crt_lh = lines;
+        if (crt_lines == NULL) {
+            return false;
+        }
+    }
+    /* pass 1: down to the virtual screen */
+    SDL_GPUColorTargetInfo ct;
+    SDL_zero(ct);
+    ct.texture = crt_lines;
+    ct.load_op = SDL_GPU_LOADOP_DONT_CARE;
+    ct.store_op = SDL_GPU_STOREOP_STORE;
+    const float u1[4] = { (float)cols, (float)lines, 0.0f, 0.0f };
+    SDL_PushGPUFragmentUniformData(get_cmd(), 0, u1, sizeof(u1));
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &ct, 1, NULL);
+    SDL_GPUViewport v1 = { 0.0f, 0.0f, (float)cols, (float)lines, 0.0f, 1.0f };
+    SDL_GPUTextureSamplerBinding b1 = { src, crt_sampler };
+    SDL_BindGPUGraphicsPipeline(pass, crt_pipe[0]);
+    SDL_SetGPUViewport(pass, &v1);
+    SDL_BindGPUFragmentSamplers(pass, 0, &b1, 1);
+    SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+    SDL_EndGPURenderPass(pass);
+    /* pass 2: the tube, onto the swapchain */
+    const GfxCrtLook* look = gfx_crt_look();
+    const struct {
+        float view[4], virt[4], look[4], mask[4];
+    } u2 = { { (float)x0, (float)(x1 - x0), (float)h, 1.0f },
+             { (float)cols, (float)lines, gfx_crt_curvature ? 1.0f : 0.0f, look->mask },
+             { look->hard_scan, look->hard_pix, look->bloom, look->boost },
+             { h >= 900 ? 3.0f : 2.0f, 0.0f, 0.0f, 0.0f } }; /* R G B stripes need room: else green/magenta */
+    SDL_zero(ct);
+    ct.texture = sc;
+    ct.clear_color.a = 1.0f;
+    ct.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_DONT_CARE;
+    ct.store_op = SDL_GPU_STOREOP_STORE;
+    SDL_PushGPUFragmentUniformData(cmd, 0, &u2, sizeof(u2));
+    pass = SDL_BeginGPURenderPass(cmd, &ct, 1, NULL);
+    SDL_GPUViewport v2 = { (float)x0, 0.0f, (float)(x1 - x0), (float)h, 0.0f, 1.0f };
+    SDL_GPUTextureSamplerBinding b2 = { crt_lines, crt_sampler };
+    SDL_BindGPUGraphicsPipeline(pass, crt_pipe[1]);
+    SDL_SetGPUViewport(pass, &v2);
+    SDL_BindGPUFragmentSamplers(pass, 0, &b2, 1);
+    SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+    SDL_EndGPURenderPass(pass);
+    return true;
 }
 
 /* ---- The window: the FPS counter, screenshots, the swap ---- */
@@ -1342,8 +1501,12 @@ extern "C" void gfx_sdlgpu_swap(void) {
         /* the game's image straight on, and the bars beside it cleared in the same pass */
         const Framebuffer& fb = framebuffers[0];
         const int x0 = (int)((int64_t)direct.x0 * w / fb.width), x1 = (int)((int64_t)direct.x1 * w / fb.width);
-        blit(direct.src, direct.sw, direct.sh, sc, x0, 0, x1 - x0, (int)h, SDL_GPU_FILTER_NEAREST, SDL_FLIP_VERTICAL,
-             x0 > 0 || x1 < (int)w ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_DONT_CARE);
+        const bool bars = x0 > 0 || x1 < (int)w;
+        if (!gfx_crt || !crt_init(SDL_GetGPUSwapchainTextureFormat(dev, wnd)) ||
+            !crt_present(direct.src, sc, x0, x1, h, bars)) {
+            blit(direct.src, direct.sw, direct.sh, sc, x0, 0, x1 - x0, (int)h, SDL_GPU_FILTER_NEAREST,
+                 SDL_FLIP_VERTICAL, bars ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_DONT_CARE);
+        }
         if (direct.counter >= 0) {
             /* where draw_counter puts it in the window framebuffer, flipped as the swap would */
             SDL_GPUTexture* tex;

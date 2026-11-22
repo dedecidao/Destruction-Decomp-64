@@ -1580,6 +1580,8 @@ static void gl_blit_to(GLuint dst_fbo, GLint sw, GLint sh, GLint dx0, GLint dy0,
     glBlitFramebuffer(0, 0, rw, rh, dx0, dy0, dx1, dy1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
 
+static void gl_crt_apply(void);
+
 static void gfx_opengl_resolve_msaa_color_buffer(int fb_id_target, int fb_id_source) {
     if (!gfx_framebuffers_enabled) {
         return;
@@ -1620,6 +1622,9 @@ static void gfx_opengl_resolve_msaa_color_buffer(int fb_id_target, int fb_id_sou
     gl_bind_current_framebuffer();
     glEnable(GL_SCISSOR_TEST);
     gl_cache_forget();
+    if (fb_id_target == 0 && fb_id_source != 0) {
+        gl_crt_apply(); /* [video] crt */
+    }
 }
 
 /*
@@ -1870,6 +1875,221 @@ static float vi_strength(void) {
     return s;
 }
 
+/*
+ * The CRT filter ([video] crt): gfx_sdlgpu.cpp's two passes (shaders/crt_down.frag
+ * and shaders/crt.frag, after the libretro shaders' public-domain crt-lottes) for
+ * GL. After the resolve has put the frame in the window, its rect is copied to a
+ * texture, box-filtered down to the virtual screen (240 lines) and drawn back as a
+ * tube TV would show it, at the window's size; the FPS counter comes after, on top.
+ * GL's window rows run bottom up, as the textures do, so nothing is flipped here.
+ */
+static GLuint crt_prog[2] = { 0, 0 };
+static GLint crt_u_src = -1, crt_u_size = -1, crt_u_lines = -1, crt_u_view = -1, crt_u_virt = -1,
+             crt_u_look = -1, crt_u_mask = -1;
+static GLuint crt_tex[2] = { 0, 0 }, crt_fbo[2] = { 0, 0 }; /* 0: the window's rect, 1: the virtual screen */
+static uint32_t crt_w[2] = { 0, 0 }, crt_h[2] = { 0, 0 };
+static GLuint crt_vbo = 0, crt_vao = 0;
+static bool crt_failed = false;
+
+static bool crt_init(void) {
+    if (crt_prog[0] != 0) return true;
+    if (crt_failed) return false;
+    if (gl_glsl_version < 130 || glGenVertexArrays == NULL) {
+        sysLogPrintf(LOG_WARNING, "CRT filter: needs GLSL 1.30 / ES 3.00 and VAOs - off");
+        crt_failed = true;
+        return false;
+    }
+    char hdr[160];
+    snprintf(hdr, sizeof(hdr), "#version %s\n%s", gl_glsl_version_str,
+             gl_es ? "precision highp float;\nprecision highp int;\n" : "");
+    std::string vs = std::string(hdr) +
+        "in vec2 aPos;\n"
+        "void main() { gl_Position = vec4(aPos, 0.0, 1.0); }\n";
+    std::string fs1 = std::string(hdr) +
+        "uniform sampler2D uSrc;\n"
+        "uniform vec4 uSize;\n"
+        "out vec4 outColor;\n"
+        "void main() {\n"
+        "    vec2 uv = gl_FragCoord.xy / uSize.xy;\n"
+        "    vec2 q = 0.25 / uSize.xy;\n"
+        "    vec3 c = texture(uSrc, uv + vec2(-q.x, -q.y)).rgb + texture(uSrc, uv + vec2(q.x, -q.y)).rgb +\n"
+        "             texture(uSrc, uv + vec2(-q.x, q.y)).rgb + texture(uSrc, uv + vec2(q.x, q.y)).rgb;\n"
+        "    outColor = vec4(pow(c * 0.25, vec3(2.2)), 1.0);\n"
+        "}\n";
+    std::string fs2 = std::string(hdr) +
+        "uniform sampler2D uLines;\n"
+        "uniform vec4 uView;\n"
+        "uniform vec4 uVirt;\n"
+        "uniform vec4 uLook;\n"
+        "uniform vec4 uMask;\n"
+        "out vec4 outColor;\n"
+        "vec3 fetchLine(ivec2 p) {\n"
+        "    return texelFetch(uLines, clamp(p, ivec2(0), ivec2(uVirt.xy) - ivec2(1)), 0).rgb;\n"
+        "}\n"
+        "void main() {\n"
+        "    vec2 uv = vec2((gl_FragCoord.x - uView.x) / uView.y, gl_FragCoord.y / uView.z);\n"
+        "    if (uView.w > 0.5) uv.y = 1.0 - uv.y;\n"
+        "    if (uVirt.z > 0.0) {\n"
+        "        vec2 p = uv * 2.0 - 1.0;\n"
+        "        p *= vec2(1.0 + p.y * p.y * 0.031 * uVirt.z, 1.0 + p.x * p.x * 0.041 * uVirt.z);\n"
+        "        uv = p * 0.5 + 0.5;\n"
+        "        if (uv.x <= 0.0 || uv.x >= 1.0 || uv.y <= 0.0 || uv.y >= 1.0) {\n"
+        "            outColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+        "            return;\n"
+        "        }\n"
+        "    }\n"
+        "    vec2 pos = uv * uVirt.xy;\n"
+        "    vec2 cell = floor(pos);\n"
+        "    vec2 d = pos - (cell + 0.5);\n"
+        "    ivec2 c = ivec2(cell);\n"
+        "    float wl = exp2(uLook.y * (d.x + 1.0) * (d.x + 1.0));\n"
+        "    float wc = exp2(uLook.y * d.x * d.x);\n"
+        "    float wr = exp2(uLook.y * (d.x - 1.0) * (d.x - 1.0));\n"
+        "    float norm = 1.0 / (wl + wc + wr);\n"
+        "    vec3 acc = vec3(0.0);\n"
+        "    for (int k = -1; k <= 1; k++) {\n"
+        "        vec3 line = (fetchLine(c + ivec2(-1, k)) * wl + fetchLine(c + ivec2(0, k)) * wc +\n"
+        "                     fetchLine(c + ivec2(1, k)) * wr) * norm;\n"
+        "        float lum = clamp(dot(line, vec3(0.30, 0.59, 0.11)), 0.0, 1.0);\n"
+        "        float dy = d.y - float(k);\n"
+        "        acc += line * exp2(uLook.x * (1.0 - uLook.z * 0.55 * lum) * dy * dy);\n"
+        "    }\n"
+        "    vec2 g = 1.0 / uVirt.xy;\n"
+        "    vec3 glow = texture(uLines, (pos + vec2(-2.0, -1.5)) * g).rgb + texture(uLines, (pos + vec2(2.0, -1.5)) * g).rgb +\n"
+        "                texture(uLines, (pos + vec2(-2.0, 1.5)) * g).rgb + texture(uLines, (pos + vec2(2.0, 1.5)) * g).rgb;\n"
+        "    acc += glow * (0.03 * uLook.z);\n"
+        "    float m = uVirt.w;\n"
+        "    vec3 mask = vec3(1.0 - m);\n"
+        "    float px = mod(floor(gl_FragCoord.x), uMask.x);\n"
+        "    if (uMask.x > 2.5) {\n"
+        "        if (px < 0.5) mask.r = 1.0 + m;\n"
+        "        else if (px < 1.5) mask.g = 1.0 + m;\n"
+        "        else mask.b = 1.0 + m;\n"
+        "    } else if (px < 0.5) {\n"
+        "        mask = vec3(1.0 - m, 1.0 + m, 1.0 - m);\n"
+        "    } else {\n"
+        "        mask = vec3(1.0 + m, 1.0 - m, 1.0 + m);\n"
+        "    }\n"
+        "    outColor = vec4(pow(clamp(acc * mask * uLook.w, 0.0, 1.0), vec3(1.0 / 2.2)), 1.0);\n"
+        "}\n";
+    crt_prog[0] = vi_compile(vs.c_str(), fs1.c_str());
+    crt_prog[1] = crt_prog[0] ? vi_compile(vs.c_str(), fs2.c_str()) : 0;
+    if (crt_prog[0] == 0 || crt_prog[1] == 0) {
+        if (crt_prog[0]) glDeleteProgram(crt_prog[0]);
+        crt_prog[0] = crt_prog[1] = 0;
+        sysLogPrintf(LOG_ERROR, "CRT filter: the shaders failed - off");
+        crt_failed = true;
+        return false;
+    }
+    crt_u_src = glGetUniformLocation(crt_prog[0], "uSrc");
+    crt_u_size = glGetUniformLocation(crt_prog[0], "uSize");
+    crt_u_lines = glGetUniformLocation(crt_prog[1], "uLines");
+    crt_u_view = glGetUniformLocation(crt_prog[1], "uView");
+    crt_u_virt = glGetUniformLocation(crt_prog[1], "uVirt");
+    crt_u_look = glGetUniformLocation(crt_prog[1], "uLook");
+    crt_u_mask = glGetUniformLocation(crt_prog[1], "uMask");
+    static const float tri[6] = { -1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f };
+    glGenBuffers(1, &crt_vbo);
+    glGenVertexArrays(1, &crt_vao);
+    glBindVertexArray(crt_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, crt_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(tri), tri, GL_STATIC_DRAW);
+    GLint loc = glGetAttribLocation(crt_prog[0], "aPos");
+    if (loc < 0) loc = 0;
+    glEnableVertexAttribArray(loc);
+    glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glBindVertexArray((gl_core_profile || gl_es) ? opengl_vao : 0);
+    glBindBuffer(GL_ARRAY_BUFFER, opengl_vbo);
+    glGenTextures(2, crt_tex);
+    glGenFramebuffers(2, crt_fbo);
+    sysLogPrintf(LOG_NOTE, "CRT filter: ready");
+    return true;
+}
+
+/* On texture unit 0: target i at w x h (the virtual screen in 16-bit float on desktop GL) */
+static void crt_size(int i, uint32_t w, uint32_t h) {
+    if (crt_w[i] == w && crt_h[i] == h) return;
+    const bool half = i == 1 && !gl_es;
+    glBindTexture(GL_TEXTURE_2D, crt_tex[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, half ? GL_RGBA16F : GL_RGBA8, w, h, 0, GL_RGBA, half ? GL_FLOAT : GL_UNSIGNED_BYTE,
+                 NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindFramebuffer(GL_FRAMEBUFFER, crt_fbo[i]);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, crt_tex[i], 0);
+    crt_w[i] = w;
+    crt_h[i] = h;
+}
+
+/* The filter over the window's present rect, in place (present_to_window's resolve just drew it) */
+static void gl_crt_apply(void) {
+    if (!gfx_crt || framebuffers.empty() || !crt_init()) return;
+    Framebuffer& win = framebuffers[0];
+    GLint x0, x1;
+    gfx_opengl_present_x(0, (GLint)win.width, &x0, &x1);
+    const uint32_t w = (uint32_t)(x1 - x0), h = win.height;
+    if (w == 0 || h == 0) return;
+    uint32_t cols, lines;
+    gfx_crt_virtual(w, h, &cols, &lines);
+    GLint vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    const GLboolean had_depth = glIsEnabled(GL_DEPTH_TEST), had_blend = glIsEnabled(GL_BLEND),
+                    had_scissor = glIsEnabled(GL_SCISSOR_TEST), had_cull = glIsEnabled(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_CULL_FACE);
+    glDepthMask(GL_FALSE);
+    glActiveTexture(GL_TEXTURE0);
+    crt_size(0, w, h);
+    crt_size(1, cols, lines);
+    /* the window's rect into a texture */
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, win.fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, crt_fbo[0]);
+    glBlitFramebuffer(x0, 0, x1, (GLint)h, 0, 0, (GLint)w, (GLint)h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindVertexArray(crt_vao);
+    /* pass 1: down to the virtual screen */
+    glBindFramebuffer(GL_FRAMEBUFFER, crt_fbo[1]);
+    glViewport(0, 0, (GLsizei)cols, (GLsizei)lines);
+    glUseProgram(crt_prog[0]);
+    glBindTexture(GL_TEXTURE_2D, crt_tex[0]);
+    glUniform1i(crt_u_src, 0);
+    glUniform4f(crt_u_size, (float)cols, (float)lines, 0.0f, 0.0f);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    /* pass 2: the tube, back into the window */
+    const GfxCrtLook* look = gfx_crt_look();
+    glBindFramebuffer(GL_FRAMEBUFFER, win.fbo);
+    glViewport(x0, 0, (GLsizei)w, (GLsizei)h);
+    glUseProgram(crt_prog[1]);
+    glBindTexture(GL_TEXTURE_2D, crt_tex[1]);
+    glUniform1i(crt_u_lines, 0);
+    glUniform4f(crt_u_view, (float)x0, (float)w, (float)h, 0.0f);
+    glUniform4f(crt_u_virt, (float)cols, (float)lines, gfx_crt_curvature ? 1.0f : 0.0f, look->mask);
+    glUniform4f(crt_u_look, look->hard_scan, look->hard_pix, look->bloom, look->boost);
+    glUniform4f(crt_u_mask, h >= 900 ? 3.0f : 2.0f, 0.0f, 0.0f, 0.0f);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    /* back to the interpreter's state */
+    gl_bind_current_framebuffer();
+    glBindVertexArray((gl_core_profile || gl_es) ? opengl_vao : 0);
+    glBindBuffer(GL_ARRAY_BUFFER, opengl_vbo);
+    glBindTexture(GL_TEXTURE_2D, current_texture_ids[0]);
+    glActiveTexture(GL_TEXTURE0 + last_selected_tile);
+    if (gl_current_prg != nullptr) {
+        glUseProgram(gl_current_prg->opengl_program_id);
+        gfx_opengl_vertex_array_set_attribs(gl_current_prg);
+        gfx_opengl_set_uniforms(gl_current_prg);
+    }
+    glViewport(vp[0], vp[1], vp[2], vp[3]);
+    if (had_depth) glEnable(GL_DEPTH_TEST);
+    if (had_blend) glEnable(GL_BLEND);
+    if (had_scissor) glEnable(GL_SCISSOR_TEST);
+    if (had_cull) glEnable(GL_CULL_FACE);
+    glDepthMask(current_depth_mask ? GL_TRUE : GL_FALSE);
+    gl_cache_forget();
+}
+
 static void gfx_opengl_resolve_n64_aa(int fb_dst, int fb_src) {
     if (!gfx_framebuffers_enabled || fb_src <= 0 || fb_src >= (int)framebuffers.size() ||
         fb_dst < 0 || fb_dst >= (int)framebuffers.size()) {
@@ -1944,6 +2164,9 @@ static void gfx_opengl_resolve_n64_aa(int fb_dst, int fb_src) {
     if (had_cull) glEnable(GL_CULL_FACE);
     glDepthMask(current_depth_mask ? GL_TRUE : GL_FALSE);
     gl_cache_forget();
+    if (fb_dst == 0) {
+        gl_crt_apply(); /* [video] crt */
+    }
 }
 
 struct GfxRenderingAPI gfx_opengl_api = {
