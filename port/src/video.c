@@ -296,6 +296,25 @@ s32 Port_TextFilter(void) {
 
 int Port_GameDrawsWorld(void);
 
+/*
+ * Driving or in a menu, for the Android touch controls (android/touch.c): the up and
+ * down arrows show only in menus. WM_HudDraw notes each race frame the player drives
+ * in; the pause box (PAUSE_SP / PAUSE_BOX_SP, seen by Port_UiHidden) means a menu.
+ */
+static SDL_AtomicU32 sDriveTick, sPauseTick;
+
+void Port_NoteDriving(int driving) {
+    if (driving) {
+        SDL_SetAtomicU32(&sDriveTick, (Uint32)SDL_GetTicks() | 1);
+    }
+}
+
+int Port_TouchDriving(void) {
+    Uint32 now = (Uint32)SDL_GetTicks(), drive = SDL_GetAtomicU32(&sDriveTick),
+           pause = SDL_GetAtomicU32(&sPauseTick);
+    return drive != 0 && now - drive < 300 && (pause == 0 || now - pause > 300);
+}
+
 /* Ui_Draw asks before each 2D element (src/auto/5EEAC.c). DD64_UILOG logs each
    id and type drawn, once */
 s32 Port_UiHidden(s32 id, s32 type) {
@@ -307,6 +326,9 @@ s32 Port_UiHidden(s32 id, s32 type) {
     if (log && id >= 0 && id < 1024 && !seen[id]) {
         seen[id] = 1;
         Port_Log("ui: element %d type %d", id, type);
+    }
+    if (id == 56 || id == 57) { /* PAUSE_SP, PAUSE_BOX_SP: the pause menu is up */
+        SDL_SetAtomicU32(&sPauseTick, (Uint32)SDL_GetTicks() | 1);
     }
     /* [video] hud_boxes off: the dark capsules behind the race HUD's numbers
        (SCREEN_BOX1_SP to SCREEN_BOX8_SP, include/ids.h), in a race only */

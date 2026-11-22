@@ -22,7 +22,7 @@ static const char *const kHudKeys[WM_HUD_GROUPS] = { "score", "time", "cars_left
 static const int kHudDefaults[WM_HUD_GROUPS][2] = {
     { 215, 12 },  /* score/place: top left, right of the L button */
     { -1, -1 },   /* time: the N64's, top centre */
-    { 1028, 12 }, /* cars left: top right corner */
+    { 928, 12 },  /* cars left: top right, left of the touch pause button */
     { 230, 137 }, /* map: left, below the score, right of L, above the arrows */
     { 868, 92 },  /* damage gauge + T/B bars: right, above C and left of R */
 };

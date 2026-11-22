@@ -909,6 +909,13 @@ void *WM_HudDraw(void *gfxPtr) {
     int handbrake = 0;
     int hudDx4 = 1; /* (always reset after the bars) */
 
+    {
+        /* the touch controls hide the up/down arrows while the player drives (video.c) */
+        void Port_NoteDriving(int driving);
+        int Port_OptIsOpen(void);
+        Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL &&
+                         (gGame->x10FC == 0x1B || gGame->x10FC == 0x1C) && !Port_OptIsOpen());
+    }
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
