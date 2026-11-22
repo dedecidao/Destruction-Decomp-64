@@ -30,6 +30,8 @@ extern uint32_t gfx_edge_fill;   /* fill see-through texels' colour from their n
 extern uint32_t gfx_seamless_sky; /* the sky dome's pieces filtered across their joins */
 extern uint32_t gfx_draw_distance; /* scenery and fog this many times further out; 1 = the N64's */
 extern uint32_t gfx_aspect_mode; /* 0 = 4:3 with side bars, 1 = stretch to the window, 2 = widescreen */
+extern uint32_t gfx_crt;         /* the CRT filter at the present: scanlines, grille, light bloom */
+extern uint32_t gfx_crt_curvature; /* the CRT filter's screen bulges like a tube's */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,6 +39,18 @@ extern "C" {
    that hides it there is up (port/game/pcmenu.c: the options screen over a race) */
 extern uint32_t gfx_scene_4x3;
 extern uint32_t gfx_scene_hidden; /* the 3D is not drawn (a menu covers it), the colour cleared */
+/* The CRT filter's look (the same in both renderers; DD64_CRT="scan,pix,bloom,mask,boost" tunes it) */
+struct GfxCrtLook {
+    float hard_scan; /* the beam's sharpness across a line (Lottes' hardScan), more negative = thinner */
+    float hard_pix;  /* the softness along a line (hardPix) */
+    float bloom;     /* how much wider a bright line's beam gets, and the glow, 0-1 */
+    float mask;      /* the aperture grille's strength, 0-1 */
+    float boost;     /* brightness, making up for the dark gaps */
+};
+const struct GfxCrtLook *gfx_crt_look(void);
+/* The virtual screen the CRT filter scans for an image w x h: the N64's 240 lines,
+   and columns for the shape (640 at 4:3, the TV's sharpness across a line) */
+void gfx_crt_virtual(uint32_t w, uint32_t h, uint32_t *cols, uint32_t *lines);
 #ifdef __cplusplus
 }
 #endif

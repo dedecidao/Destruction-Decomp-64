@@ -28,6 +28,8 @@ typedef struct {
     int hdFonts;             /* UI fonts from Data/Textures/fonts_hd when there */
     int sharpText;           /* menu and HUD text point sampled (no bilinear blur) */
     int drawDistance;        /* scenery and fog that many times further out: 1 = N64, 2, 4, 8, 16 */
+    int crt;                 /* the CRT filter: scanlines, aperture grille, light bloom */
+    int crtCurvature;        /* the CRT filter's picture bulges like a tube's */
     int showFps;             /* the frame counter in the corner */
     int renderer;            /* 0 OpenGL, 1 SDL_gpu (Vulkan); read at start */
     /* [audio] */
