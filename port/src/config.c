@@ -187,6 +187,11 @@ static const Setting sSettings[] = {
     { "video", "draw_distance", &gPortConfig.drawDistance, DEF(1, 8),
       "1 = as the N64; 2, 4, 8 or 16 = the scenery drawn that many times further out, and the fog"
       " (Swamp, Glacier) with it" },
+    { "video", "crt", &gPortConfig.crt, 0,
+      "1 = a CRT filter, the picture as a tube TV showed the N64: its 240 horizontal scanlines"
+      " with a light bloom (Android: drawn at the screen's full resolution from the next start)" },
+    { "video", "crt_curvature", &gPortConfig.crtCurvature, 0,
+      "1 = with the CRT filter, the picture bulges like a tube's" },
     { "video", "renderer", &gPortConfig.renderer, DEF(0, 1),
       "opengl, or sdlgpu: SDL's GPU API (Vulkan). Takes effect the next time the game starts", kRendererNames },
     { "audio", "volume", &gPortConfig.volume, 100, "Master volume, 0-100" },
