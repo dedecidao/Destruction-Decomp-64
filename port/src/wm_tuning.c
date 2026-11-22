@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 3 /* 3: [weather] */
+#define WM_TUNING_VERSION 4 /* 4: random_weather disabled by default (snow-only on glacier) */
 
 /*
  * Weather per race track, by the game's track id (D_800958B4). Ids 0-3 are the
@@ -69,7 +69,13 @@ static void setDefaults(WMTuning *t) {
     t->snowAlpha = 142;
     t->snowLift = 0.06f;
 
-    t->weatherRandom = 1;
+    /*
+     * Initial random-weather attempt (rain, storms, synthesized thunder) is kept
+     * intact in wm_weather.c / wm_thunder.c rather than discarded, but disabled
+     * by default because it still needs further polish over time. Track 10
+     * (glacier) still uses the new 3-layer parallax snow.
+     */
+    t->weatherRandom = 0;
     t->weatherLayers = 3;
     t->weatherDensity = 1.0f;
     memcpy(t->weatherChance, kWeatherDefaults, sizeof(t->weatherChance));
@@ -131,7 +137,8 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "snow_alpha = %d\n", t->snowAlpha);
     fprintf(f, "snow_lift = %.2f\n", t->snowLift);
     fprintf(f, "\n[weather]\n");
-    fprintf(f, "; random_weather = 0 gives the N64's weather (snow on the glacier only).\n");
+    fprintf(f, "; random_weather = 0 (default): new 3-layer parallax snow on the glacier only.\n");
+    fprintf(f, "; Experimental rain/storm/thunder is kept in code for future refinement (set 1 to try).\n");
     fprintf(f, "; layers = 1-3 particle depths (parallax); density = particle count multiplier.\n");
     fprintf(f, "; track_N = weights for clear rain storm snow, N = the game's track id:\n");
     fprintf(f, ";   race menu order 5 4 7 8 11 6 10 9 (5 = Seascape Sprint); 0-3 are arenas (no weather).\n");
@@ -286,10 +293,15 @@ void WM_ReloadTuning(void) {
     SDL_free(data);
 
     if (sTuning.tuningVersion >= 2 && sTuning.tuningVersion < WM_TUNING_VERSION) {
-        /* v2 -> v3 only added [weather]: keep the player's values, write the new section */
+        /* v2 -> v3 added [weather]; v3 -> v4 disables random_weather by default while
+           keeping the new parallax snow on track 10 */
+        if (sTuning.tuningVersion == 3) {
+            sTuning.weatherRandom = 0;
+        }
         sTuning.tuningVersion = WM_TUNING_VERSION;
         writeDefaultIni(path, &sTuning);
-        Port_Log("wm_mod: added [weather] to %s (v%d)", path, WM_TUNING_VERSION);
+        Port_Log("wm_mod: updated [weather] in %s (v%d, random_weather=%d)", path,
+                 WM_TUNING_VERSION, sTuning.weatherRandom);
     } else if (sTuning.tuningVersion < WM_TUNING_VERSION) {
         int keepEnabled = sTuning.enabled;
         setDefaults(&sTuning);
