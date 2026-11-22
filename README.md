@@ -9,6 +9,7 @@ A fork of [murkantor/Destruction-Decomp-64](https://github.com/murkantor/Destruc
 | **High-resolution fonts**: every UI font redrawn at 4x (Tahoma Bold, Impact for the numbers) with a gradient and the original drop shadow, from `Data/Textures/fonts_hd/`; switch on or off at any time | `[video] hd_fonts` |
 | **Font collection**: each font the game shows is saved once to `Data/Textures/fonts_original/`, for making its HD version with `tools/port/gen_hd_fonts.py` | the folder exists |
 | **HUD capsules off**: the dark capsules behind score, time and cars left can be hidden in races | `[video] hud_boxes` |
+| **CRT filter**: the N64's 240 horizontal scanlines with a light bloom, as a tube TV showed it (optional curvature), after libretro's public-domain crt-lottes | `[video] crt`, `crt_curvature` |
 | **HUD spacing**: with HD fonts, the white numbers sit a little lower, clear of the yellow titles | with `hd_fonts` |
 | **Windows icon** for `DestructionDerby64.exe` | always |
 

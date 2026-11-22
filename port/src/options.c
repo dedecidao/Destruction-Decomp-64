@@ -141,6 +141,8 @@ static const Option kVideo[] = {
     { "hud boxes", &gPortConfig.hudBoxes, kOffOn, kOffOnN, N(kOffOn), 0, 0 },
     { "seamless sky", &gPortConfig.seamlessSky, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "draw distance", &gPortConfig.drawDistance, kDistance, kDistanceN, N(kDistance), 1, 0 },
+    { "crt filter", &gPortConfig.crt, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "crt curvature", &gPortConfig.crtCurvature, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "anisotropy", &gPortConfig.anisotropy, kAniso, kAnisoN, N(kAniso), 1, 1 },
     { "fps counter", &gPortConfig.showFps, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "renderer", &gPortConfig.renderer, kRenderer, kRendererN, N(kRenderer), 0, 1 },
@@ -183,6 +185,10 @@ static const Option kVideo[] = {
     /* { "hd fonts", &gPortConfig.hdFonts, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
        hidden on Android for now: the HD fonts do not work there yet (config.c keeps them off) */
     { "draw distance", &gPortConfig.drawDistance, kDistance, kDistanceN, N(kDistance), 1, 0 },
+    /* the CRT filter takes effect at once; the launcher gives it the screen's full
+       resolution (not the 720/1080-line surface) from the next start */
+    { "crt filter", &gPortConfig.crt, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
+    { "crt curvature", &gPortConfig.crtCurvature, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "fps counter", &gPortConfig.showFps, kOffOn, kOffOnN, N(kOffOn), 1, 0 },
     { "renderer", &gPortConfig.renderer, kRenderer, kRendererN, N(kRenderer), 0, 1 },
 };

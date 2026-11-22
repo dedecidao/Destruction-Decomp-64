@@ -53,6 +53,33 @@ uint32_t gfx_scene_4x3 = 0;
 uint32_t gfx_scene_hidden = 0;
 }
 uint32_t gfx_edge_fill = 0;
+uint32_t gfx_crt = 0;
+uint32_t gfx_crt_curvature = 0;
+
+/* [video] crt: the look, after the libretro shaders' crt-lottes defaults, softened for a
+   phone's small, dense screen (see shaders/crt.frag) */
+extern "C" const struct GfxCrtLook *gfx_crt_look(void) {
+    static struct GfxCrtLook look = { -10.0f, -4.0f, 0.4f, 0.0f, 1.40f };
+    static bool read = false;
+    if (!read) {
+        const char *e = getenv("DD64_CRT");
+        read = true;
+        if (e != NULL) {
+            sscanf(e, "%f,%f,%f,%f,%f", &look.hard_scan, &look.hard_pix, &look.bloom, &look.mask, &look.boost);
+        }
+    }
+    return &look;
+}
+
+extern "C" void gfx_crt_virtual(uint32_t w, uint32_t h, uint32_t *cols, uint32_t *lines) {
+    *lines = 240;
+    *cols = h > 0 ? (uint32_t)(480.0 * w / h + 0.5) : 640;
+    if (*cols < 64) {
+        *cols = 64;
+    } else if (*cols > 2048) {
+        *cols = 2048;
+    }
+}
 uint32_t gfx_seamless_sky = 1;
 uint32_t gfx_draw_distance = 1;
 
