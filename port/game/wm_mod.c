@@ -715,6 +715,94 @@ f32 WM_HandbrakeSlipThreshold(void *carPtr) {
 
 #define WM_GFX2(g, a, b) do { WMGfx *_g = (g)++; _g->w0 = (u32)(a); _g->w1 = (u32)(b); } while (0)
 
+/* ---- Widescreen HUD layout ([hud] in wm_tuning.ini, docs/HUD_LAYOUT.md) ---- */
+
+extern u8 D_800D2E58; /* the views drawn: 1 = one player */
+float gfx_hud_side_room(void);
+
+/* Each group's top-left as the N64 draws it (N64 pixels) and the edge it keeps to on a
+   wider screen: -1 left, 0 centre, 1 right */
+static const struct {
+    s16 x, y;
+    s8 anchor;
+} kHudGroup[WM_HUD_GROUPS] = {
+    { 21, 21, -1 },  /* score/place: SCREEN_BOX1 and its text */
+    { 139, 22, 0 },  /* time: SCREEN_BOX3 */
+    { 219, 21, 1 },  /* cars left: SCREEN_BOX2 */
+    { 32, 160, -1 }, /* map: RADAR and the cars on it */
+    { 258, 150, 1 }, /* damage: HEALTH / WIRE */
+    { 99, 193, 0 },  /* pedals: the T/B bars (WM_HudDraw), centred at 160, 199 */
+};
+
+static int hudGroupOf(int id) {
+    switch (id) {
+        case 168: case 436: case 444: case 413: case 518: /* SCREEN_BOX1, SCORE/, score, PLACE, place */
+            return WM_HUD_SCORE;
+        case 170: case 434: case 512: /* SCREEN_BOX3, TIME, time */
+            return WM_HUD_TIME;
+        case 169: case 504: case 424: /* SCREEN_BOX2, CARS LEFT, cars left */
+            return WM_HUD_CARS;
+        case 522: /* the speed under the damage gauge */
+            return WM_HUD_DAMAGE;
+        default:
+            break;
+    }
+    if (id >= 14 && id <= 29) { /* RADAR_SP, CAR_RADAR_USER0..AI10_SP */
+        return WM_HUD_MAP;
+    }
+    if ((id >= 40 && id <= 55) || (id >= 228 && id <= 259)) { /* HEALTH_*, WIRE_*, IMPACT_* (the hit flashes) */
+        return WM_HUD_DAMAGE;
+    }
+    return -1;
+}
+
+/* One player's race on a wide screen, the layout on */
+static int hudLayoutOn(void) {
+    return WM_Enabled() && WM_GetTuning()->hudLayout && D_800D2E58 == 1 && Port_GameDrawsWorld() &&
+           gfx_hud_side_room() > 0.0f;
+}
+
+void WM_HudGroupOffset(int group, int *dx4, int *dy4, int *scale4096) {
+    const WMTuning *t = WM_GetTuning();
+    float room, tx, s;
+
+    *dx4 = *dy4 = 0;
+    *scale4096 = 4096;
+    if (group < 0 || group >= WM_HUD_GROUPS || !hudLayoutOn() || t->hudPos[group][0] < 0) {
+        return;
+    }
+    /* the template is 1280x720: 3 pixels an N64 pixel, the 4:3 area from x 160 to 1120 */
+    room = gfx_hud_side_room();
+    if (kHudGroup[group].anchor < 0) {
+        tx = -room + t->hudPos[group][0] / 3.0f;
+    } else if (kHudGroup[group].anchor > 0) {
+        tx = 320.0f + room - (1280 - t->hudPos[group][0]) / 3.0f;
+    } else {
+        tx = 160.0f + (t->hudPos[group][0] - 640) / 3.0f;
+    }
+    /* drawn at s about the screen's top-left, then moved so the group's top-left lands on tx */
+    s = t->hudScale[group];
+    *scale4096 = (int)(s * 4096.0f);
+    *dx4 = (int)((tx - kHudGroup[group].x * s) * 4.0f);
+    if (t->hudPos[group][1] >= 0) {
+        *dy4 = (int)((t->hudPos[group][1] / 3.0f - kHudGroup[group].y * s) * 4.0f);
+    } else {
+        *dy4 = (int)(kHudGroup[group].y * (1.0f - s) * 4.0f);
+    }
+}
+
+void WM_HudOffset(int id, int *dx4, int *dy4, int *scale4096) {
+    WM_HudGroupOffset(hudGroupOf(id), dx4, dy4, scale4096);
+}
+
+/* The start lights (READY / SET / GO and their halos, the orange light) */
+float WM_HudScale(int id) {
+    if ((id == 161 || id == 162 || (id >= 260 && id <= 265)) && WM_Enabled()) {
+        return WM_GetTuning()->hudStartLights;
+    }
+    return 1.0f;
+}
+
 static WMGfx *wmBeginRects(WMGfx *g) {
     WM_GFX2(g, 0xE7000000, 0);
     WM_GFX2(g, 0xE3000A01, 0);          /* one cycle */
@@ -802,6 +890,101 @@ static WMGfx *wmDrawVectorBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val,
     return g;
 }
 
+/* A horizontal bar filling with val from its left end, or from its right end */
+static WMGfx *wmDrawHBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, int fromRight,
+                         u32 bgRgba, u32 borderRgba, u32 fillRgba, u32 capRgba) {
+    s32 innerW = (x1 - 2) - (x0 + 2);
+    s32 quarter = innerW / 4;
+    s32 fillW, i;
+
+    if (val < 0.0f) {
+        val = 0.0f;
+    } else if (val > 1.0f) {
+        val = 1.0f;
+    }
+    g = wmRect(g, x0 + 1, y0 + 1, x1 - 1, y1 - 1, bgRgba);
+    g = wmDrawFrame(g, x0, y0, x1, y1, borderRgba);
+    for (i = 1; i <= 3; i++) {
+        g = wmRect(g, x0 + 2 + quarter * i, y0 + 2, x0 + 2 + quarter * i + 1, y1 - 2, i == 2 ? 0xFFFFFF38 : 0xFFFFFF28);
+    }
+    if (val > 0.005f) {
+        fillW = (s32)(val * (f32)innerW + 0.5f);
+        if (fillW < 2) {
+            fillW = 2;
+        } else if (fillW > innerW) {
+            fillW = innerW;
+        }
+        if (!fromRight) {
+            g = wmRect(g, x0 + 2, y0 + 2, x0 + 2 + fillW, y1 - 2, fillRgba);
+            g = wmRect(g, x0 + fillW, y0 + 2, x0 + 2 + fillW, y1 - 2, capRgba);
+        } else {
+            g = wmRect(g, x1 - 2 - fillW, y0 + 2, x1 - 2, y1 - 2, fillRgba);
+            g = wmRect(g, x1 - 2 - fillW, y0 + 2, x1 - fillW, y1 - 2, capRgba);
+        }
+    }
+    return g;
+}
+
+/* ---- LED pedal bars: segments lit along a ramp in the HUD's colours ---- */
+
+/* A colour on the ramp: t 0..1 through the stops (r g b) */
+static u32 wmRamp(const u8 (*stops)[3], int n, f32 t, u32 alpha) {
+    f32 p;
+    int i;
+    u32 r, gg, b;
+
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    p = t * (f32)(n - 1);
+    i = (int)p;
+    if (i >= n - 1) i = n - 2;
+    p -= (f32)i;
+    r = (u32)(stops[i][0] + (stops[i + 1][0] - stops[i][0]) * p);
+    gg = (u32)(stops[i][1] + (stops[i + 1][1] - stops[i][1]) * p);
+    b = (u32)(stops[i][2] + (stops[i + 1][2] - stops[i][2]) * p);
+    return (r << 24) | (gg << 16) | (b << 8) | (alpha & 0xFF);
+}
+
+/* Throttle: dark green, green, yellow, a white-hot tip. Brake: dark olive, yellow, white */
+static const u8 kRampGas[4][3] = { { 0x1A, 0x6A, 0x28 }, { 0x3C, 0xD2, 0x4A }, { 0xF2, 0xE6, 0x40 }, { 0xFF, 0xFF, 0xF0 } };
+static const u8 kRampBrake[4][3] = { { 0x5A, 0x54, 0x16 }, { 0xD8, 0xB8, 0x22 }, { 0xFF, 0xE6, 0x50 }, { 0xFF, 0xFF, 0xF0 } };
+
+#define WM_LED_SEGS 11
+
+/* 48x12: a dark panel, 11 segments of 3 with a 1 gap, lit from the left (or the right)
+   up to val, the edge segment lit in part; each lit segment has a glossy top line. Full,
+   the frame pulses; `hot` (the handbrake) turns the frame white */
+static WMGfx *wmDrawLedBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, int fromRight,
+                           const u8 (*ramp)[3], u32 frame, int hot) {
+    s32 i, sx;
+    f32 lit;
+    u32 border = 0x2A8A3AE0;
+
+    if (val < 0.0f) val = 0.0f;
+    if (val > 1.0f) val = 1.0f;
+    if (hot) {
+        border = 0xFFFFFFF0;
+    } else if (val >= 0.98f) {
+        border = (frame & 8) ? 0xC8FF70FF : 0x58E060F0; /* a slow blink at full */
+    }
+    g = wmRect(g, x0 + 1, y0 + 1, x1 - 1, y1 - 1, 0x06140AC8);
+    g = wmDrawFrame(g, x0, y0, x1, y1, border);
+    lit = val * (f32)WM_LED_SEGS;
+    for (i = 0; i < WM_LED_SEGS; i++) {
+        f32 on = lit - (f32)i; /* 1 lit, 0 dark, in between the edge */
+        u32 a;
+        sx = fromRight ? (x1 - 2 - 4 * i - 3) : (x0 + 2 + 4 * i);
+        if (on > 1.0f) on = 1.0f;
+        if (on < 0.0f) on = 0.0f;
+        a = 0x30 + (u32)(on * (f32)(0xFF - 0x30));
+        g = wmRect(g, sx, y0 + 2, sx + 3, y1 - 2, wmRamp(ramp, 4, (f32)i / (f32)(WM_LED_SEGS - 1), a));
+        if (on > 0.5f) {
+            g = wmRect(g, sx, y0 + 2, sx + 3, y0 + 3, 0xFFFFFF60); /* gloss */
+        }
+    }
+    return g;
+}
+
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     if (target > cur) {
         cur += (target - cur) * riseRate + 0.025f;
@@ -819,6 +1002,7 @@ static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
 
 void *WM_HudDraw(void *gfxPtr) {
     static f32 sSmoothT, sSmoothB;
+    static u32 sFrame;
     WMGfx *g = (WMGfx *)gfxPtr;
     WMCar *car;
     u16 btn = 0;
@@ -826,7 +1010,15 @@ void *WM_HudDraw(void *gfxPtr) {
     s32 ch = 0;
     f32 rawT = 0.0f, rawB = 0.0f;
     int handbrake = 0;
+    int hudDx4 = 1; /* (always reset after the bars) */
 
+    {
+        /* the touch controls hide the up/down arrows while the player drives (video.c) */
+        void Port_NoteDriving(int driving);
+        int Port_OptIsOpen(void);
+        Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL &&
+                         (gGame->x10FC == 0x1B || gGame->x10FC == 0x1C) && !Port_OptIsOpen());
+    }
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
@@ -870,14 +1062,28 @@ void *WM_HudDraw(void *gfxPtr) {
     sSmoothT = stepSmoothBar(sSmoothT, rawT, 0.28f, 0.30f);
     sSmoothB = stepSmoothBar(sSmoothB, rawB, 0.34f, 0.32f);
 
-    /* Positioned directly left of the MPH / car damage gauge, clear of Z/B/A touch controls */
+    /* Directly left of the car damage gauge and level with it: the bars and their
+       T / B letters span the gauge's height (about y 152-220 of the 320x240 screen) */
+    {
+        /* where the widescreen layout puts the pedals */
+        int dx4, dy4, s4096;
+        WM_HudGroupOffset(WM_HUD_PEDALS, &dx4, &dy4, &s4096);
+        hudDx4 = dx4 | dy4 | (s4096 - 4096);
+        WM_GFX2(g, 0x00490000, s4096);
+        WM_GFX2(g, 0x00480000 | (dy4 & 0xFFFF), dx4);
+    }
+    /* Side by side under the car, centred at 160, 199: T fills from the left toward the
+       middle, B from the right toward the middle, the letters at the outer ends */
+    sFrame++;
     g = wmBeginRects(g);
-    g = wmDrawVectorBar(g, 228, 122, 240, 170, sSmoothT,
-                        0x040C1CB8, 0x4AA6FFE0, 0x1E88FFFF, 0x84E0FFFF);
-    g = wmDrawVectorBar(g, 243, 122, 255, 170, sSmoothB,
-                        0x180608B8, handbrake ? 0xFFA228F0 : 0xFF5252E0, 0xF52828FF, 0xFF9A80FF);
-    g = wmDrawGlyphT(g, 230, 173, 0x62C2FFFF);
-    g = wmDrawGlyphB(g, 245, 173, 0xFF5858FF);
+    g = wmDrawLedBar(g, 109, 193, 157, 205, sSmoothT, 0, kRampGas, sFrame, 0);
+    g = wmDrawLedBar(g, 163, 193, 211, 205, sSmoothB, 1, kRampBrake, sFrame, handbrake);
+    g = wmDrawGlyphT(g, 98, 195, 0x5CFF6AFF);
+    g = wmDrawGlyphB(g, 214, 195, 0xFFE14AFF);
     WM_GFX2(g, 0xE7000000, 0);
+    if (hudDx4 != 0) {
+        WM_GFX2(g, 0x00490000, 4096); /* the scale and offset back off */
+        WM_GFX2(g, 0x00480000, 0);
+    }
     return WM_ScoreDraw(g);
 }

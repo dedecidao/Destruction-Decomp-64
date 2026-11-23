@@ -65,6 +65,10 @@ Gfx *Gfx_RestoreF3dexUcode(Gfx *);
 Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
     Node *n;
     ElemA *e;
+#ifdef TARGET_PC
+    /* the widescreen HUD layout's offset last put in the display list (port/game/wm_mod.c) */
+    s32 hudDx = 0, hudDy = 0, hudS = 4096;
+#endif
 
     if (ctx->x8B54 == NULL) {
         return g;
@@ -79,6 +83,19 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
             s32 Port_UiHidden(s32 id, s32 type);
             if (Port_UiHidden(*(s32 *)e, e->x4)) {
                 continue;
+            }
+        }
+        {
+            /* Wrecked Metal's widescreen HUD: the element's group moved toward the screen's edge */
+            void WM_HudOffset(int id, int *dx4, int *dy4, int *scale4096);
+            s32 dx, dy, s;
+            WM_HudOffset(*(s32 *)e, &dx, &dy, &s);
+            if (dx != hudDx || dy != hudDy || s != hudS) {
+                GFX2(g, 0x00490000, s);
+                GFX2(g, 0x00480000 | (dy & 0xFFFF), dx);
+                hudDx = dx;
+                hudDy = dy;
+                hudS = s;
             }
         }
 #endif
@@ -106,6 +123,21 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
         }
         case 2: {
             ElemB *b = (ElemB *)e;
+#ifdef TARGET_PC
+            {
+                /* Wrecked Metal: some pictures drawn smaller, about their centre (the start lights) */
+                float WM_HudScale(int id);
+                f32 k = WM_HudScale(*(s32 *)e);
+                if (k != 1.0f) {
+                    f32 sx = b->x78 * k, sy = b->x7C * k;
+                    Bg_SetScale(b->x18, sx, sy, 0);
+                    Sprite_SetSize(b->x18, b->x80 + (s32)(b->x88 * b->x78 * (1.0f - k) / 2.0f),
+                                   b->x84 + (s32)(b->x8C * b->x7C * (1.0f - k) / 2.0f), b->x88 * sx, b->x8C * sy);
+                    g = Bg_Draw(b->x18, g, 0);
+                    break;
+                }
+            }
+#endif
             if (b->x78 != 1.0 || b->x7C != 1.0) {
                 Bg_SetScale(b->x18, b->x78, b->x7C, 0);
             }
@@ -151,5 +183,11 @@ Gfx *Ui_Draw(Ctx *ctx, Gfx *g) {
         }
         }
     }
+#ifdef TARGET_PC
+    if (hudDx != 0 || hudDy != 0 || hudS != 4096) {
+        GFX2(g, 0x00490000, 4096); /* the HUD scale and offset back off */
+        GFX2(g, 0x00480000, 0);
+    }
+#endif
     return Gfx_RestoreF3dexUcode(g);
 }

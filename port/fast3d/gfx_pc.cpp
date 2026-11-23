@@ -367,6 +367,18 @@ static float prim_depth_ndc(void) {
     return std::min(rdp.prim_depth / 32767.0f, 1.0f) * 2.0f - 1.0f;
 }
 static bool vp_wide;                   /* the current draw uses the whole width */
+/* Widescreen HUD layout (port/game/wm_mod.c WM_HudOffset): the 4:3 area the current 2D
+   draws land in, moved by this many N64 pixels, so a HUD element can sit at the window's
+   edge. Set by the port's offset command in the display list (a G_NOOP, gfx_run) */
+static float hud_dx, hud_dy, hud_scale = 1.0f; /* the group drawn at hud_scale, then moved */
+
+/* The room beside the 4:3 area on each side, in N64 pixels (0 unless widescreen) */
+extern "C" float gfx_hud_side_room(void) {
+    if (gfx_aspect_mode != 2 || fb_height == 0 || fb_width * 3 <= fb_height * 4) {
+        return 0.0f;
+    }
+    return ((float)fb_width / ((float)fb_height * 4.0f / 3.0f) - 1.0f) * NATIVE_WIDTH / 2.0f;
+}
 static int game_fb;                    /* the game draws here, presented to framebuffer 0 */
 static bool frame_started;
 static bool frame_color_cleared; /* [video] draw_distance > 1: this frame's colour is cleared (gfx_dp_fill_rectangle) */
@@ -1519,8 +1531,18 @@ static void gfx_adjust_rect(struct XYWidthHeight *area) {
     float sx = (float)fb_width / NATIVE_WIDTH, sy = (float)fb_height / NATIVE_HEIGHT;
     float x0 = 0.0f;
     if (gfx_aspect_mode == 2 && !vp_wide) {
-        sx = sy; /* the 4:3 area in the middle */
-        x0 = (fb_width - NATIVE_WIDTH * sx) / 2.0f;
+        /* the 4:3 area in the middle; for the HUD layout scaled by hud_scale about its
+           top-left, then moved by hud_dx, hud_dy (all 1 and 0 otherwise) */
+        x0 = (fb_width - NATIVE_WIDTH * sy) / 2.0f + hud_dx * sy;
+        sx = sy * hud_scale;
+        float x = x0 + area->x * sx, w = area->width * sx;
+        float y = (NATIVE_HEIGHT - hud_dy - (area->y + (int)area->height) * hud_scale) * sy;
+        float h = area->height * sy * hud_scale;
+        area->x = (int16_t)x;
+        area->y = (int16_t)y;
+        area->width = (uint32_t)(w + 0.5f);
+        area->height = (uint32_t)(h + 0.5f);
+        return;
     }
     float x = x0 + area->x * sx, w = area->width * sx;
     float y = (NATIVE_HEIGHT - area->y - (int)area->height) * sy, h = area->height * sy;
@@ -2602,6 +2624,22 @@ static void gfx_run_dl(const uint8_t *cmd) {
         switch (opcode) {
             /* ---- RSP (F3DEX2) ---- */
             case G_NOOP:
+                if ((w0 & 0x00FF0000) == 0x00480000) {
+                    /* the port's HUD offset (WM_HudOffset): dx in w1, dy in w0's low half, quarter pixels */
+                    float dx = (int32_t)w1 / 4.0f, dy = (int16_t)(w0 & 0xFFFF) / 4.0f;
+                    if (dx != hud_dx || dy != hud_dy) {
+                        hud_dx = dx;
+                        hud_dy = dy;
+                        rdp.viewport_or_scissor_changed = true;
+                    }
+                } else if ((w0 & 0x00FF0000) == 0x00490000) {
+                    /* the HUD group's scale, w1 / 4096 (sent before its offset) */
+                    float s = w1 > 0 ? (int32_t)w1 / 4096.0f : 1.0f;
+                    if (s != hud_scale) {
+                        hud_scale = s;
+                        rdp.viewport_or_scissor_changed = true;
+                    }
+                }
                 break;
             case G_MTX:
                 gfx_sp_matrix((w0 & 0xFF) ^ G_MTX_PUSH, seg_addr(w1));
@@ -3498,6 +3536,8 @@ void gfx_run(const void *commands, uint32_t ucode_text) {
 
 void gfx_end_frame(void) {
     frame_started = false;
+    hud_dx = hud_dy = 0.0f; /* a display list that left an offset set */
+    hud_scale = 1.0f;
     interp_end_frame();
 }
 

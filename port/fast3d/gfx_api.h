@@ -48,6 +48,8 @@ struct GfxCrtLook {
     float boost;     /* brightness, making up for the dark gaps */
 };
 const struct GfxCrtLook *gfx_crt_look(void);
+/* Widescreen: the room beside the 4:3 HUD area on each side, in N64 pixels (0 otherwise) */
+float gfx_hud_side_room(void);
 /* The virtual screen the CRT filter scans for an image w x h: the N64's 240 lines,
    and columns for the shape (640 at 4:3, the TV's sharpness across a line) */
 void gfx_crt_virtual(uint32_t w, uint32_t h, uint32_t *cols, uint32_t *lines);
