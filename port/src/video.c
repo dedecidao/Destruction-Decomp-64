@@ -297,9 +297,11 @@ s32 Port_TextFilter(void) {
 int Port_GameDrawsWorld(void);
 
 /*
- * Driving or in a menu, for the Android touch controls (android/touch.c): the up and
- * down arrows show only in menus. WM_HudDraw notes each race frame the player drives
- * in; the pause box (PAUSE_SP / PAUSE_BOX_SP, seen by Port_UiHidden) means a menu.
+ * Racing or in a menu, for the Android touch controls (android/touch.c): the up and
+ * down arrows show only in menus. A race is on while its scene is drawn (WM_HudDraw
+ * notes every race frame); inside it, only the pause (PAUSE_SP / PAUSE_BOX_SP, seen by
+ * Port_UiHidden every frame it is up) or the PC options page count as a menu. Hitches,
+ * the countdown, a wreck, the end of the race: still the race, no arrows.
  */
 static SDL_AtomicU32 sDriveTick, sPauseTick;
 
@@ -312,9 +314,11 @@ void Port_NoteDriving(int driving) {
 int Port_TouchDriving(void) {
     Uint32 now = (Uint32)SDL_GetTicks(), drive = SDL_GetAtomicU32(&sDriveTick),
            pause = SDL_GetAtomicU32(&sPauseTick);
-    /* a hitch of a few frames must not read as a menu (the arrows would blink in): driving
-       lasts a second past the last race frame; the pause box counts at once */
-    return drive != 0 && now - drive < 1000 && (pause == 0 || now - pause > 300);
+    int Port_OptIsOpen(void);
+    /* the race stays on for 3 s past its last frame drawn (a long hitch, a loading pause) */
+    int racing = drive != 0 && now - drive < 3000;
+    int paused = pause != 0 && now - pause < 500;
+    return racing && !paused && !Port_OptIsOpen();
 }
 
 /* Ui_Draw asks before each 2D element (src/auto/5EEAC.c). DD64_UILOG logs each
