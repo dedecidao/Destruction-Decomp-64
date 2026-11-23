@@ -312,7 +312,9 @@ void Port_NoteDriving(int driving) {
 int Port_TouchDriving(void) {
     Uint32 now = (Uint32)SDL_GetTicks(), drive = SDL_GetAtomicU32(&sDriveTick),
            pause = SDL_GetAtomicU32(&sPauseTick);
-    return drive != 0 && now - drive < 300 && (pause == 0 || now - pause > 300);
+    /* a hitch of a few frames must not read as a menu (the arrows would blink in): driving
+       lasts a second past the last race frame; the pause box counts at once */
+    return drive != 0 && now - drive < 1000 && (pause == 0 || now - pause > 300);
 }
 
 /* Ui_Draw asks before each 2D element (src/auto/5EEAC.c). DD64_UILOG logs each
