@@ -106,8 +106,18 @@ void Ai_PickTarget(Car *car) {
     tp = Car_GetPos(target);
     cp = Car_GetPos(car);
     d.x = tp.x - cp.x;
+#ifdef TARGET_PC
+    /* docs/bugs.md 19: y and z took the target's x; Wrecked Metal ([ai] fix_bugs) fixes it */
+    {
+        int WM_AiFixBugs(void);
+        int fix = WM_AiFixBugs();
+        d.y = (fix ? tp.y : tp.x) - cp.y;
+        d.z = (fix ? tp.z : tp.x) - cp.z;
+    }
+#else
     d.y = tp.x - cp.y;
     d.z = tp.x - cp.z;
+#endif
     if (90.0f < AngleBetween(func_8001FC08(car), d)) {
         ai->x6C = 1;
     }

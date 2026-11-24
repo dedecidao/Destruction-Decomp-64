@@ -27,7 +27,8 @@ f32 Port_CarDrive(void *car, s32 reversing) {
     s32 ch = carChannel(car);
 
     if (ch < 0) {
-        return 1.0f;
+        float WM_AiThrottleScale(void *);
+        return WM_AiThrottleScale(car); /* 1, or the race director's (ai_director.c) */
     }
     return reversing ? Port_InputBrake(ch) : Port_InputGas(ch);
 }
