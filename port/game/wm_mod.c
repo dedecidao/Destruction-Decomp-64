@@ -1129,24 +1129,28 @@ void WM_EmitSparks(void *poolPtr, void *carPtr, f32 offX, f32 offY, f32 offZ, f3
 
 typedef struct { s16 x, y, z; u16 flag; s16 s, t; u8 r, g, b, a; } WMVtx;
 
-/* The headlights' glow texture (32x32 RGBA16) warmer, once: a 1990s sealed-beam white-yellow */
+/* The headlights' glow texture (D_80090930: 32x32 RGBA32, bytes R G B A in memory) warmer,
+   once: a 1990s sealed-beam yellow-white. Green a touch down, blue well down */
 void WM_WarmHeadlightTexture(void *tex) {
     static void *done;
-    u16 *p = (u16 *)tex;
+    u8 *p = (u8 *)tex;
     int i;
 
     if (!WM_Enabled() || tex == NULL || done == tex) {
         return;
     }
     done = tex;
+    if (getenv("DD64_DUMPLAMP") != NULL) { /* testing: the texture before and after, raw */
+        void Port_DumpBytes(const char *name, const void *p, int n);
+        Port_DumpBytes("lamp_before.bin", tex, 4096);
+    }
     for (i = 0; i < 32 * 32; i++) {
-        u16 c = p[i]; /* RGBA 5551, as the game stores it (the port keeps it big-endian in memory) */
-        u16 be = (u16)((c >> 8) | (c << 8));
-        u32 r = (be >> 11) & 31, g = (be >> 6) & 31, b = (be >> 1) & 31, a = be & 1;
-        g = g * 29 / 31;
-        b = b * 19 / 31;
-        be = (u16)((r << 11) | (g << 6) | (b << 1) | a);
-        p[i] = (u16)((be >> 8) | (be << 8));
+        p[i * 4 + 1] = (u8)(p[i * 4 + 1] * 238 / 255);
+        p[i * 4 + 2] = (u8)(p[i * 4 + 2] * 160 / 255);
+    }
+    if (getenv("DD64_DUMPLAMP") != NULL) {
+        void Port_DumpBytes(const char *name, const void *p, int n);
+        Port_DumpBytes("lamp_after.bin", tex, 4096);
     }
 }
 
@@ -1244,7 +1248,8 @@ void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const flo
     }
     WM_GFX2(g, 0xE7000000, 0);
     WM_GFX2(g, 0xD9FDF9FF, 0x00200004);          /* no lighting, no culling; shade, smooth */
-    WM_GFX2(g, 0xFCFFFFFF, 0xFFFE793C);          /* G_CC_SHADE: the vertex colour and alpha */
+    WM_GFX2(g, 0xFC41C683, 0xFF8FFFFF);          /* shade x primitive, colour and alpha */
+    WM_GFX2(g, 0xFA0000FE, 0xFFFFFFFF);          /* the primitive colour: WM_HeadlightFade sets its alpha */
     WM_GFX2(g, 0xE200001C, 0x00504A50);          /* depth tested, not written, blended */
     WM_GFX2(g, 0x01000000 | ((WM_FAN_ROWS * WM_FAN_COLS) << 12) | ((WM_FAN_ROWS * WM_FAN_COLS) << 1),
             (u32)(uintptr_t)v);                  /* 25 vertices into slots 0-24 */
@@ -1256,6 +1261,53 @@ void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const flo
     }
     WM_GFX2(g, 0xD9FFFFFF, 0x00020000);          /* lighting back on for what follows */
     return g;
+}
+
+/*
+ * The fan lies in the car's own space: on the road that is right, but a car on two wheels,
+ * flying or nose-up would carry it like a carpet. Each frame the car is drawn, the fan's
+ * primitive alpha (the 0xFA0000FE command in its display list) follows how upright the car
+ * is and whether its wheels touch the road, eased so it fades rather than pops.
+ */
+void WM_HeadlightFade(void *carPtr, void *dlPtr) {
+    static void *sCar[24];
+    static f32 sK[24];
+    WMCar *car = (WMCar *)carPtr;
+    WMGfx *g = (WMGfx *)dlPtr;
+    f32 m[4][4], upLen, upright, target;
+    int i, air = 0, slot;
+
+    if (!WM_Enabled() || dlPtr == NULL) {
+        return;
+    }
+    Frame_ToMatrix(m, carPtr, 1);
+    upLen = sqrtf(m[1][0] * m[1][0] + m[1][1] * m[1][1] + m[1][2] * m[1][2]);
+    upright = upLen > 0.0001f ? m[1][1] / upLen : 1.0f;
+    for (i = 0; i < 4; i++) {
+        if (car->wheels[i].groundNormal.z >= 1.0f) { /* a wheel in the air */
+            air++;
+        }
+    }
+    /* full on a level car with its wheels down; gone past ~25 degrees of tilt or two wheels up */
+    target = (upright - 0.90f) / 0.06f;
+    if (target > 1.0f) target = 1.0f;
+    if (target < 0.0f) target = 0.0f;
+    if (air >= 2) target = 0.0f;
+    slot = (int)(((u32)(uintptr_t)carPtr >> 4) % 24);
+    if (sCar[slot] != carPtr) {
+        sCar[slot] = carPtr;
+        sK[slot] = target;
+    }
+    sK[slot] += (target - sK[slot]) * 0.25f;
+    for (i = 0; i < 96; i++, g++) {
+        if (g->w0 == 0xFA0000FE) {
+            g->w1 = 0xFFFFFF00u | (u32)(sK[slot] * 255.0f);
+            return;
+        }
+        if ((g->w0 >> 24) == 0xDF) {
+            return;
+        }
+    }
 }
 
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {

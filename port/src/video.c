@@ -401,3 +401,12 @@ s32 Port_UiTextDY(s32 id) {
     }
     return 0;
 }
+
+/* Testing: raw bytes to a file in the working directory */
+void Port_DumpBytes(const char *name, const void *p, int n) {
+    SDL_IOStream *f = SDL_IOFromFile(name, "wb");
+    if (f != NULL) {
+        SDL_WriteIO(f, p, (size_t)n);
+        SDL_CloseIO(f);
+    }
+}

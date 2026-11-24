@@ -102,6 +102,7 @@ void WM_ThunderPlay(float dist);
 int WM_EmitWheelDust(void *car, void *a, void *b);
 int WM_EmitHoodSmoke(void *car, void *pos, void *mtx);
 int WM_HoodSmokeStartHp(void);
+void WM_HeadlightFade(void *car, void *dl);
 void WM_EmitSparks(void *pool, void *car, float offX, float offY, float offZ, float force, void *otherCar);
 int WM_NightCarLights(int track);
 int WM_NightGroundLight(int track);
