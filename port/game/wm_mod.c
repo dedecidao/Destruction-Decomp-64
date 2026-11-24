@@ -1172,9 +1172,17 @@ void WM_WarmHeadlightTexture(void *tex) {
 
 typedef struct {
     WMVtx *v;           /* the fan's 25 vertices (the key) */
-    u8 sized, broken;   /* broken: bit 0 lamp 0, bit 1 lamp 1 */
+    u8 sized, broken;   /* broken: bit 0 lamp 0, bit 1 lamp 1 (what is drawn dark now) */
     void *car;          /* the car it belongs to (WM_HeadlightFade) */
     s32 zmax[3];        /* the front, left-front and right-front zones' health at its best */
+    /* a failing lamp (first hit on its corner) flickers: per lamp, frames to the next change,
+       blinks left in the burst, and whether it is out right now */
+    s16 timer[2];
+    u8 blinks[2], out[2];
+    /* the glow quads' four G_TRI1 commands, kept to turn a lamp back on */
+    WMGfx *tri[4];
+    u32 triW0[4], triW1[4];
+    u8 triSaved;
 } WMFan;
 static WMFan sFans[32];
 
@@ -1291,7 +1299,10 @@ void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const flo
     /* (a race sets its cars up twice while loading: start this car's fan over) */
     fan->sized = 0;
     fan->broken = 0;
+    fan->triSaved = 0;
     memset(fan->zmax, 0, sizeof(fan->zmax));
+    memset(fan->timer, 0, sizeof(fan->timer));
+    memset(fan->out, 0, sizeof(fan->out));
     if (!wmFanBuild(v, rear, front, 1.0f, 0)) {
         fan->v = NULL;
         return gfxPtr;
@@ -1333,6 +1344,15 @@ float WM_LightMul(void) {
     return sLightMul;
 }
 
+/* A small random sequence of our own, so the flicker leaves the game's rand() alone */
+static u32 wmRand(void) {
+    static u32 s = 0x9E3779B9u;
+    s ^= s << 13;
+    s ^= s >> 17;
+    s ^= s << 5;
+    return s;
+}
+
 /* A front corner's health (Car.damage[zone], the u32 at +8 of each 0x14-byte zone) */
 static s32 wmZoneHealth(void *carPtr, int zone) {
     return *(s32 *)((u8 *)carPtr + 0xA6C + zone * 0x14 + 8);
@@ -1347,7 +1367,7 @@ void WM_HeadlightFade(void *carPtr, void *dlPtr) {
     WMFan *fan;
     f32 m[4][4], upLen, upright, target;
     int i, air = 0, slot, broken = 0;
-    static int test = -2;
+    static int test = -2, testFlick = -1;
 
     if (!WM_Enabled() || dlPtr == NULL) {
         return;
@@ -1365,52 +1385,94 @@ void WM_HeadlightFade(void *carPtr, void *dlPtr) {
     }
     fan->car = carPtr;
 
-    /* the lamps break with the front corners: lamp 0 (the car's right) with the right front
-       (zone 1), lamp 1 (its left) with the left front (zone 4), both with the front (zone 0),
-       each once its zone has lost about 40% (the front 65%). DD64_BREAKLAMP=zone (testing)
-       breaks that zone at once */
+    /* The lamps follow the front corners' damage (each zone starts at 3): lamp 0 (the car's
+       right) the right front (zone 1), lamp 1 (its left) the left front (zone 4), both the
+       front (zone 0). The first hit on a corner leaves its lamp failing: it flickers, in
+       uneven bursts, now and then; the next hit breaks it (dark for good).
+       DD64_BREAKLAMP=zone / DD64_FLICKLAMP=zone (testing) break / fail that zone at once */
     if (test == -2) {
         const char *e = getenv("DD64_BREAKLAMP");
+        const char *f = getenv("DD64_FLICKLAMP");
         test = e != NULL ? atoi(e) : -1;
+        testFlick = f != NULL ? atoi(f) : -1;
     }
     {
         static const int kZone[3] = { 0, 1, 4 };
+        int failing = 0, dark;
         for (i = 0; i < 3; i++) {
+            int bits = i == 0 ? 3 : i; /* zone 0 both lamps, zone 1 lamp 0 (bit 1), zone 4 lamp 1 (bit 2) */
             s32 h = wmZoneHealth(carPtr, kZone[i]);
             if (h > fan->zmax[i]) {
                 fan->zmax[i] = h;
             }
             if (test == kZone[i]) {
                 h = 0;
+            } else if (testFlick == kZone[i] && fan->zmax[i] > 0) {
+                h = fan->zmax[i] - 1;
             }
             if (fan->zmax[i] > 0 && h * 100 < fan->zmax[i] * (i == 0 ? 35 : 60)) {
-                broken |= i == 0 ? 3 : i; /* zone 0 both, zone 1 lamp 0 (bit 1), zone 4 lamp 1 (bit 2) */
+                broken |= bits;
+            } else if (fan->zmax[i] > 0 && h < fan->zmax[i]) {
+                failing |= bits;
             }
         }
-    }
-    if (!fan->sized || broken != fan->broken) {
-        f32 k = wmIsHumanCar(carPtr) ? 0.70f : 0.50f;
-        {
+        failing &= ~broken;
+        /* the flicker: a lamp mostly on, going out in short bursts of 1-3 blinks (2-6 frames
+           out, 2-5 back on), the bursts 10 frames to 3 seconds apart, sometimes close together */
+        for (i = 0; i < 2; i++) {
+            if (!(failing & (1 << i))) {
+                fan->out[i] = 0;
+                fan->timer[i] = 0;
+                continue;
+            }
+            if (--fan->timer[i] > 0) {
+                continue;
+            }
+            if (fan->out[i]) {
+                fan->out[i] = 0; /* back on */
+                fan->timer[i] = fan->blinks[i] > 0 ? (s16)(2 + wmRand() % 4)
+                                                   : (s16)(wmRand() % 4 == 0 ? 10 + wmRand() % 30 : 40 + wmRand() % 140);
+            } else {
+                if (fan->blinks[i] == 0) {
+                    u32 r = wmRand() % 10;
+                    fan->blinks[i] = (u8)(r < 5 ? 1 : r < 8 ? 2 : 3);
+                }
+                fan->blinks[i]--;
+                fan->out[i] = 1;
+                fan->timer[i] = (s16)(2 + wmRand() % 5);
+            }
+        }
+        dark = broken | (fan->out[0] ? 1 : 0) | (fan->out[1] ? 2 : 0);
+        if (!fan->sized || dark != fan->broken) {
+            f32 k = wmIsHumanCar(carPtr) ? 0.70f : 0.50f;
             /* the lamps from the car's own stats (CarStats at Car+0xBEC: +0x128 the rear
                lamps, +0x170 the front ones), as Car_BuildLightDisplayLists read them */
             const f32 *st = (const f32 *)((u8 *)carPtr + 0xBEC);
-            wmFanBuild(v, st + 0x128 / 4, st + 0x170 / 4, k, broken);
-        }
-        if (broken != fan->broken) {
-            /* the lamps' glow quads (G_TRI1, vertices 0-3 lamp 0, 4-7 lamp 1) off for a broken
-               lamp: the car shows its own unlit lamp texture again */
-            for (i = 0, s = g; s < prim; i++, s++) {
-                if ((s->w0 >> 24) == 0x05) {
-                    int lamp = ((s->w0 >> 16) & 0xFF) / 2 >= 4;
-                    if (broken & (1 << lamp)) {
-                        s->w0 = 0;
-                        s->w1 = 0;
+            wmFanBuild(v, st + 0x128 / 4, st + 0x170 / 4, k, dark);
+            /* the lamps' glow quads (G_TRI1, vertices 0-3 lamp 0, 4-7 lamp 1): off for a dark
+               lamp (the car shows its own unlit lamp texture), back on when it lights again */
+            if (!fan->triSaved) {
+                int n = 0;
+                for (s = g; s < prim && n < 4; s++) {
+                    if ((s->w0 >> 24) == 0x05) {
+                        fan->tri[n] = s;
+                        fan->triW0[n] = s->w0;
+                        fan->triW1[n] = s->w1;
+                        n++;
                     }
                 }
+                fan->triSaved = 1;
             }
+            for (i = 0; i < 4; i++) {
+                if (fan->tri[i] != NULL) {
+                    int lamp = ((fan->triW0[i] >> 16) & 0xFF) / 2 >= 4;
+                    fan->tri[i]->w0 = (dark & (1 << lamp)) ? 0 : fan->triW0[i];
+                    fan->tri[i]->w1 = (dark & (1 << lamp)) ? 0 : fan->triW1[i];
+                }
+            }
+            fan->sized = 1;
+            fan->broken = (u8)dark;
         }
-        fan->sized = 1;
-        fan->broken = (u8)broken;
     }
 
     Frame_ToMatrix(m, carPtr, 1);
