@@ -178,9 +178,11 @@ void Car_UpdateWreck(Car *car) {
             if (D_800958AC != 1 && race->x0 >= 2 && race->x10 == 1) {
                 Ai_OnCarWrecked(car);
             }
-        } else if (car->x10 < 21) {
 #ifdef TARGET_PC
-            if (!WM_EmitHoodSmoke(car, &pos, m))
+        } else if (car->x10 < WM_HoodSmokeStartHp()) { /* Wrecked Metal smokes from 80 health */
+            if (!WM_EmitHoodSmoke(car, &pos, m) && car->x10 < 21)
+#else
+        } else if (car->x10 < 21) {
 #endif
             {
                 Vec3f p;

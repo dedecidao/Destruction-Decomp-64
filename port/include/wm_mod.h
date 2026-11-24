@@ -98,6 +98,7 @@ void WM_ThunderPlay(float dist);
 /* Game-side hooks (port/game/wm_mod.c, port/game/wm_score.c) */
 int WM_EmitWheelDust(void *car, void *a, void *b);
 int WM_EmitHoodSmoke(void *car, void *pos, void *mtx);
+int WM_HoodSmokeStartHp(void);
 int WM_CanInitAiSkid(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);

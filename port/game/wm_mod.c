@@ -5,6 +5,10 @@
  */
 #include "common.h"
 #include "wm_mod.h"
+#include <stdint.h>
+
+char *getenv(const char *);
+int atoi(const char *);
 
 typedef struct { u32 w0; u32 w1; } WMGfx;
 typedef struct { f32 x, y, z; } Vec3f;
@@ -277,6 +281,9 @@ static void styleForSurface(s32 surface, s32 skidMode, const WMTuning *cfg, Surf
     }
 }
 
+/* Particles of the smoke pool the wheel dust leaves free for the hood smoke */
+#define WM_HOOD_RESERVE 40
+
 static void emitWheelSegment(WMParticleObj *obj, const Vec3f *from, const Vec3f *to,
                              const SurfaceDustStyle *st, f32 intensity, f32 stepDist,
                              f32 scaleMul, f32 lifeMul, f32 alphaMul, int maxSteps) {
@@ -285,7 +292,7 @@ static void emitWheelSegment(WMParticleObj *obj, const Vec3f *from, const Vec3f 
     f32 scale, growth;
     int life, alphaStep, maxAlpha, steps, emitted = 0;
 
-    if (obj->count >= obj->maxCount) {
+    if (obj->count >= obj->maxCount - WM_HOOD_RESERVE) {
         return;
     }
 
@@ -322,7 +329,7 @@ static void emitWheelSegment(WMParticleObj *obj, const Vec3f *from, const Vec3f 
     }
 
     p = *from;
-    for (emitted = 0; emitted < steps && obj->count < obj->maxCount; emitted++) {
+    for (emitted = 0; emitted < steps && obj->count < obj->maxCount - WM_HOOD_RESERVE; emitted++) {
         Vec3f spawnPos = p;
         WMParticle *pt;
 
@@ -483,27 +490,69 @@ int WM_EmitWheelDust(void *carPtr, void *a, void *b) {
     return 1;
 }
 
+/*
+ * Hood smoke by damage (Car_UpdateWreck, src/auto/1C624.c, every car every frame below
+ * WM_HoodSmokeStartHp). The N64 smokes only under 21 health, one particle a frame for
+ * every car. Here, by health (cars start between 110 and 200):
+ *   80..50   light: thin pale wisps
+ *   50..21   medium: grey-white, steadier
+ *   21..1    heavy: thick white, the N64's stage
+ *   0        black, before the car burns out
+ * The player's car smokes at the full rate; the other cars at half of it (every other
+ * frame per stage), which halves their particles. The wheel dust keeps WM_HOOD_RESERVE
+ * particles of the shared pool free for it, so a dusty race no longer starves it.
+ */
+static int wmIsHumanCar(void *carPtr);
+
+#define WM_HOOD_LIGHT 80
+#define WM_HOOD_MEDIUM 50
+#define WM_HOOD_HEAVY 21
+
+int WM_HoodSmokeStartHp(void) {
+    return WM_Enabled() ? WM_HOOD_LIGHT : WM_HOOD_HEAVY;
+}
+
 int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
+    static u8 sTick[32];
     WMCar *car = (WMCar *)carPtr;
     const Vec3f *pos = (const Vec3f *)posPtr;
     f32 (*m)[4] = (f32 (*)[4])mtxPtr;
     WMParticleObj *smokeObj;
     WMParticle *pt;
     Vec3f p, v, acc;
-    f32 spd, spdNorm, r1, r2, backPush, latVel;
-    s32 life;
+    f32 spd, spdNorm, r1, r2, backPush, latVel, scale, spread, rise;
+    s32 life, hp = car->health, every, maxAlpha, alphaStep;
+    u8 *tick;
+    int human;
 
     if (!WM_Enabled()) {
         return 0;
     }
-    if (D_8012455C || D_801245A4 == NULL) {
+    /* (not D_8012455C: this runs in the car update, where that is the last view drawn) */
+    if (D_801245A4 == NULL || hp >= WM_HOOD_LIGHT) {
         return 1;
     }
-
     smokeObj = (WMParticleObj *)(D_801245A4 + 0xB0);
     if (smokeObj->count >= smokeObj->maxCount) {
         return 1;
     }
+
+    human = wmIsHumanCar(carPtr);
+    if (hp <= 0 || hp < WM_HOOD_HEAVY) {
+        every = 1;
+    } else if (hp < WM_HOOD_MEDIUM) {
+        every = 3;
+    } else {
+        every = 6;
+    }
+    if (!human) {
+        every *= 2;
+    }
+    tick = &sTick[((u32)(uintptr_t)carPtr >> 4) & 31];
+    if (++*tick < every) {
+        return 1;
+    }
+    *tick = 0;
 
     spd = Car_GetSpeed(carPtr);
     if (spd < 0.0f) {
@@ -513,51 +562,56 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
     if (spdNorm > 1.0f) {
         spdNorm = 1.0f;
     }
-
     r1 = (f32)((rand() & 7) - 3);
     life = 9 - D_800D31CC;
     if (life < 4) {
         life = 4;
     }
 
-    if (car->health > 0) {
-        /* Stage 1 white hood smoke: flattens nearly horizontal at speed & spreads left/right */
-        r2 = randRange(10.5f);
+    if (hp > 0) {
+        /* white to grey, thicker and longer as the health drops; flattened at speed and
+           spread to the sides by the airflow */
+        f32 d = 1.0f - (f32)hp / (f32)WM_HOOD_LIGHT; /* 0 light .. ~1 heavy */
+        scale = 4.4f + 2.2f * d;
+        spread = 6.5f + 4.0f * d;
+        rise = 2.3f + 0.6f * d;
+        maxAlpha = 80 + (s32)(105.0f * d);
+        alphaStep = maxAlpha / 4;
+        life += (s32)(2.0f * d);
+
+        r2 = randRange(spread);
         p.x = pos->x + m[0][0] * (15.0f - r1) - m[2][0] * r2;
         p.y = pos->y + m[0][1] * (15.0f - r1) - m[2][1] * r2 + 0.4f;
         p.z = pos->z + m[0][2] * (15.0f - r1) - m[2][2] * r2;
-
         backPush = spdNorm * 1.45f;
         latVel = randRange(2.15f) * (0.70f + 0.50f * spdNorm);
         v.x = -m[0][0] * backPush + m[2][0] * latVel;
-        v.y = 2.85f * (1.0f - 0.82f * spdNorm);
+        v.y = rise * (1.0f - 0.82f * spdNorm);
         v.z = -m[0][2] * backPush + m[2][2] * latVel;
         Vec3f_Set(&acc, 0.0f, -0.09f * spdNorm, 0.0f);
 
-        pt = (WMParticle *)Particle_Spawn(smokeObj, p, v, acc, 6.6f, 0.34f,
-                                          (u16)(life + 1), 45, 185, 0, 0, 0);
+        pt = (WMParticle *)Particle_Spawn(smokeObj, p, v, acc, scale, 0.30f + 0.04f * d,
+                                          (u16)(life + 1), (u8)alphaStep, maxAlpha, 0, 0, 0);
         if (pt != NULL) {
-            pt->r = 242;
-            pt->g = 247;
-            pt->b = 255;
+            u8 grey = (u8)(250 - (s32)(48.0f * d)); /* pale white, then greyer */
+            pt->r = grey;
+            pt->g = grey;
+            pt->b = (u8)(grey + (grey < 250 ? 5 : 0));
         }
     } else {
-        /* Stage 2 black smoke (pre-explosion): gentler tilt & lateral dispersion */
+        /* black smoke before the car burns out: gentler tilt and spread */
         r2 = randRange(7.8f);
         p.x = pos->x + m[0][0] * (15.0f - r1) - m[2][0] * r2;
         p.y = pos->y + m[0][1] * (15.0f - r1) - m[2][1] * r2;
         p.z = pos->z + m[0][2] * (15.0f - r1) - m[2][2] * r2;
-
         backPush = spdNorm * 0.75f;
         latVel = randRange(0.95f) * (0.80f + 0.35f * spdNorm);
         v.x = -m[0][0] * backPush + m[2][0] * latVel;
         v.y = 3.90f * (1.0f - 0.42f * spdNorm);
         v.z = -m[0][2] * backPush + m[2][2] * latVel;
         Vec3f_Set(&acc, 0.0f, -0.025f * spdNorm, 0.0f);
-
         Particle_Spawn(smokeObj, p, v, acc, 7.6f, 0.32f, (u16)life, 50, 250, 0, 1, 1);
     }
-
     return 1;
 }
 
@@ -1033,6 +1087,15 @@ void *WM_HudDraw(void *gfxPtr) {
     }
 
     car = (WMCar *)D_800958F0[0].x0;
+    {
+        /* DD64_CARHP=n (testing): the player's car at n health, once per race */
+        static void *applied;
+        const char *e = getenv("DD64_CARHP");
+        if (e != NULL && car != NULL && applied != (void *)car) {
+            car->health = atoi(e);
+            applied = car;
+        }
+    }
     if (car == NULL || car->wrecked) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
