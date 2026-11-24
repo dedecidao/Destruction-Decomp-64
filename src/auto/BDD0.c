@@ -1,5 +1,8 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+void WM_SetLightCar(void *);
+#endif
 
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { u32 w0; u32 w1; } Gfx;
@@ -154,6 +157,9 @@ Gfx *Car_Draw(Car *car, Gfx *gfx, s32 unused, Cam *cam)
                     EmitTrail(car);
                 }
                 if (car->xB80) {
+#ifdef TARGET_PC
+                    WM_SetLightCar(car); /* its broken lamps dim the light on the road */
+#endif
                     Light_UpdateVertexColors(car->xB80, D_8012556C[0], D_80125570->xC, m18, !car->xD);
                 }
             } else {

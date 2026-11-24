@@ -2,6 +2,7 @@
 #include "m2c.h"
 #ifdef TARGET_PC
 int WM_Enabled(void);
+float WM_LightMul(void);
 #endif
 
 typedef struct { f32 x, y, z; } Vec3f;
@@ -155,7 +156,7 @@ void Light_UpdateVertexColors(Light *light, Grid *grid, Vert *verts, f32 m[4][4]
                    begins) and peaks at about half the N64's strength, yellow-white */
                 f32 q = 1.0f - dd * inv;
                 if (q > 0.0f) {
-                    f32 a = q * q * 150.0f;
+                    f32 a = q * q * 150.0f * WM_LightMul(); /* less with broken lamps */
                     c[0] = s->r + (s32)a;
                     c[1] = s->g + (s32)(a * 0.90f);
                     c[2] = s->b + (s32)(a * 0.60f);

@@ -5,6 +5,7 @@
  */
 #include "common.h"
 #include "wm_mod.h"
+void Port_Log(const char *, ...);
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
@@ -1158,84 +1159,111 @@ void WM_WarmHeadlightTexture(void *tex) {
 /*
  * The headlights' light on the road ahead: one soft fan per car, as a light pool would
  * fall on the asphalt. A 5 x 5 grid of vertices in the car's own space (drawn in its display
- * list, so it follows the car for free): it starts at the lamps, drops to just above the
- * road, opens to about three car widths, and fades in its vertices, with alpha 0 on every
- * edge (no straight cut anywhere) and the far end rounded. The two lamps' light merges a
- * little ahead of the bumper, with a short darker V between them. Untextured, the colour
- * and the fade in the vertices: 25 vertices, 32 small triangles a car.
+ * list, so it follows the car for free): it is born at the two lamps themselves, drops to
+ * just above the road, opens to a few car widths and fades in its vertices, with alpha 0 on
+ * every edge (no straight cut anywhere) and the far end rounded. Untextured, the colour and
+ * the fade in the vertices: 25 vertices, 32 small triangles a car.
+ * WM_HeadlightFade, each frame the car is drawn: the fan's size once the car's driver is
+ * known (70% for a player, 50% for the computer cars), its fade on a tilted or flying car,
+ * and the lamps breaking with the front corners' damage.
  */
 #define WM_FAN_ROWS 5
 #define WM_FAN_COLS 5
 
-void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const float *front) {
-    /* along the beam (car lengths), its half width (in half lamp spacings), its alpha */
-    static const f32 kDist[WM_FAN_ROWS] = { 0.0f, 1.0f, 2.6f, 4.4f, 6.0f };
-    static const f32 kHalf[WM_FAN_ROWS] = { 1.25f, 3.2f, 5.2f, 6.4f, 5.8f };
-    static const u8 kAlphaLamp[WM_FAN_ROWS] = { 110, 145, 115, 55, 0 }; /* columns 1 and 3 */
-    static const u8 kAlphaMid[WM_FAN_ROWS] = { 20, 140, 145, 62, 0 };   /* column 2: dark V only at the bumper */
-    static const f32 kCol[WM_FAN_COLS] = { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f };
-    WMGfx *g = (WMGfx *)gfxPtr;
-    WMVtx *v = (WMVtx *)vtxPtr;
-    f32 fwd[3], side[3], up[3], mid[3], len, sl, ul, halfLamp, ground, alphaMul;
-    int r, c, k;
+typedef struct {
+    WMVtx *v;           /* the fan's 25 vertices (the key) */
+    u8 sized, broken;   /* broken: bit 0 lamp 0, bit 1 lamp 1 */
+    void *car;          /* the car it belongs to (WM_HeadlightFade) */
+    s32 zmax[3];        /* the front, left-front and right-front zones' health at its best */
+} WMFan;
+static WMFan sFans[32];
 
-    if (!WM_Enabled()) {
-        return gfxPtr;
+static WMFan *wmFanSlot(WMVtx *v, int make) {
+    int i, free = -1;
+    for (i = 0; i < 32; i++) {
+        if (sFans[i].v == v) {
+            return &sFans[i];
+        }
+        if (sFans[i].v == NULL && free < 0) {
+            free = i;
+        }
     }
-    for (k = 0; k < 3; k++) {
-        fwd[k] = (front[k] + front[3 + k]) * 0.5f - (rear[k] + rear[3 + k]) * 0.5f;
-        side[k] = front[3 + k] - front[k];
-        mid[k] = (front[k] + front[3 + k]) * 0.5f;
+    if (!make) {
+        return NULL;
+    }
+    if (free < 0) {
+        memset(sFans, 0, sizeof(sFans));
+        free = 0;
+    }
+    memset(&sFans[free], 0, sizeof(sFans[free]));
+    sFans[free].v = v;
+    return &sFans[free];
+}
+
+/* The vertices for size k, with broken lamps dark (their side of the fan gone) */
+static int wmFanBuild(WMVtx *v, const f32 *rear, const f32 *front, f32 k, int broken) {
+    /* along the beam (car lengths), the outer half width (in half lamp spacings), alpha */
+    static const f32 kDist[WM_FAN_ROWS] = { 0.0f, 1.0f, 2.6f, 4.4f, 6.0f };
+    static const f32 kHalf[WM_FAN_ROWS] = { 1.35f, 3.2f, 5.2f, 6.4f, 5.8f };
+    static const u8 kAlphaLamp[WM_FAN_ROWS] = { 110, 145, 115, 55, 0 }; /* columns 1 and 3 */
+    static const u8 kAlphaMid[WM_FAN_ROWS] = { 20, 140, 145, 62, 0 };   /* column 2 */
+    f32 fwd[3], side[3], up[3], mid[3], len, sl, ul, halfLamp, ground;
+    int r, c, kk;
+
+    for (kk = 0; kk < 3; kk++) {
+        fwd[kk] = (front[kk] + front[3 + kk]) * 0.5f - (rear[kk] + rear[3 + kk]) * 0.5f;
+        side[kk] = front[3 + kk] - front[kk];
+        mid[kk] = (front[kk] + front[3 + kk]) * 0.5f;
     }
     len = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
     sl = sqrtf(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
     if (len < 0.001f || sl < 0.001f) {
-        return gfxPtr;
+        return 0;
     }
-    for (k = 0; k < 3; k++) {
-        fwd[k] /= len;
-        side[k] /= sl;
+    for (kk = 0; kk < 3; kk++) {
+        fwd[kk] /= len;
+        side[kk] /= sl;
     }
     up[0] = fwd[1] * side[2] - fwd[2] * side[1];
     up[1] = fwd[2] * side[0] - fwd[0] * side[2];
     up[2] = fwd[0] * side[1] - fwd[1] * side[0];
     ul = sqrtf(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
     if (ul < 0.001f) {
-        return gfxPtr;
+        return 0;
     }
-    for (k = 0; k < 3; k++) {
-        up[k] /= ul;
-    }
-    {
-        const char *e = getenv("DD64_BEAMUP"); /* testing: flips the side the road is on */
-        if (e != NULL && atoi(e) < 0) {
-            for (k = 0; k < 3; k++) up[k] = -up[k];
-        }
+    for (kk = 0; kk < 3; kk++) {
+        up[kk] /= ul;
     }
     halfLamp = sl * 0.5f;
-    {
-        /* the lamps' height over the road, about (car lengths); the fan lies just above it.
-           DD64_FANGROUND / DD64_FANALPHA tune it in tests */
-        const char *e = getenv("DD64_FANGROUND");
-        const char *f = getenv("DD64_FANALPHA");
-        ground = len * (e != NULL ? (f32)atof(e) : 0.02f);
-        alphaMul = f != NULL ? (f32)atof(f) : 1.0f;
-    }
+    ground = len * 0.02f;
 
     for (r = 0; r < WM_FAN_ROWS; r++) {
+        /* row 0 sits on the lamps: its inner columns are the lamps themselves */
+        f32 outer = r == 0 ? kHalf[0] * halfLamp : kHalf[r] * k * halfLamp;
+        f32 inner = r == 0 ? halfLamp : outer * 0.5f;
+        if (inner < halfLamp) {
+            inner = halfLamp; /* never narrower than the lamps */
+        }
+        if (outer < inner * 1.35f) {
+            outer = inner * 1.35f;
+        }
         for (c = 0; c < WM_FAN_COLS; c++) {
             WMVtx *q = &v[r * WM_FAN_COLS + c];
-            f32 d = kDist[r] * len, h = r == 0 ? 0.0f : -ground, w = kCol[c] * kHalf[r] * halfLamp;
-            f32 p[3];
-            u8 a;
+            f32 d = kDist[r] * len * k, h = r == 0 ? 0.0f : -ground, w, p[3];
+            f32 a;
+            w = c == 0 ? -outer : c == 1 ? -inner : c == 2 ? 0.0f : c == 3 ? inner : outer;
             if (r == WM_FAN_ROWS - 1) {
                 /* the far end rounded: the outer columns come back toward the lamps */
-                d -= (c == 0 || c == 4 ? 1.3f : c == 2 ? 0.0f : 0.35f) * len;
+                d -= (c == 0 || c == 4 ? 1.3f : c == 2 ? 0.0f : 0.35f) * len * k;
             }
-            for (k = 0; k < 3; k++) {
-                p[k] = mid[k] + fwd[k] * d + side[k] * w + up[k] * h;
+            for (kk = 0; kk < 3; kk++) {
+                p[kk] = mid[kk] + fwd[kk] * d + side[kk] * w + up[kk] * h;
             }
-            a = (c == 0 || c == 4) ? 0 : (c == 2 ? kAlphaMid[r] : kAlphaLamp[r]);
+            a = (c == 0 || c == 4) ? 0.0f : (c == 2 ? kAlphaMid[r] : kAlphaLamp[r]);
+            /* a broken lamp's side goes dark, the middle at half */
+            if ((broken & 1) && c < 2) a = 0.0f;
+            if ((broken & 2) && c > 2) a = 0.0f;
+            if (c == 2 && broken) a *= broken == 3 ? 0.0f : 0.5f;
             q->x = (s16)(p[0] * 100.0f);
             q->y = (s16)(p[1] * 100.0f);
             q->z = (s16)(p[2] * 100.0f);
@@ -1244,8 +1272,29 @@ void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const flo
             q->r = 255;
             q->g = (u8)(240 - r * 4); /* white-yellow, a little warmer far out */
             q->b = (u8)(196 - r * 10);
-            q->a = (u8)(a * alphaMul > 255.0f ? 255 : a * alphaMul);
+            q->a = (u8)a;
         }
+    }
+    return 1;
+}
+
+void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const float *front) {
+    WMGfx *g = (WMGfx *)gfxPtr;
+    WMVtx *v = (WMVtx *)vtxPtr;
+    WMFan *fan;
+    int r, c;
+
+    if (!WM_Enabled()) {
+        return gfxPtr;
+    }
+    fan = wmFanSlot(v, 1);
+    /* (a race sets its cars up twice while loading: start this car's fan over) */
+    fan->sized = 0;
+    fan->broken = 0;
+    memset(fan->zmax, 0, sizeof(fan->zmax));
+    if (!wmFanBuild(v, rear, front, 1.0f, 0)) {
+        fan->v = NULL;
+        return gfxPtr;
     }
     WM_GFX2(g, 0xE7000000, 0);
     WM_GFX2(g, 0xD9FDF9FF, 0x00200004);          /* no lighting, no culling; shade, smooth */
@@ -1264,23 +1313,106 @@ void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const flo
     return g;
 }
 
-/*
- * The fan lies in the car's own space: on the road that is right, but a car on two wheels,
- * flying or nose-up would carry it like a carpet. Each frame the car is drawn, the fan's
- * primitive alpha (the 0xFA0000FE command in its display list) follows how upright the car
- * is and whether its wheels touch the road, eased so it fades rather than pops.
- */
+/* How much of the headlights' light on the road and walls is left: 1, half with one lamp
+   broken, 0 with both (Light_UpdateVertexColors, through WM_LightMul) */
+static f32 sLightMul = 1.0f;
+
+void WM_SetLightCar(void *carPtr) {
+    int i;
+    sLightMul = 1.0f;
+    for (i = 0; i < 32; i++) {
+        if (sFans[i].v != NULL && sFans[i].car == carPtr) {
+            int b = sFans[i].broken;
+            sLightMul = b == 3 ? 0.0f : b ? 0.55f : 1.0f;
+            return;
+        }
+    }
+}
+
+float WM_LightMul(void) {
+    return sLightMul;
+}
+
+/* A front corner's health (Car.damage[zone], the u32 at +8 of each 0x14-byte zone) */
+static s32 wmZoneHealth(void *carPtr, int zone) {
+    return *(s32 *)((u8 *)carPtr + 0xA6C + zone * 0x14 + 8);
+}
+
 void WM_HeadlightFade(void *carPtr, void *dlPtr) {
     static void *sCar[24];
     static f32 sK[24];
     WMCar *car = (WMCar *)carPtr;
-    WMGfx *g = (WMGfx *)dlPtr;
+    WMGfx *g = (WMGfx *)dlPtr, *s, *prim = NULL;
+    WMVtx *v = NULL;
+    WMFan *fan;
     f32 m[4][4], upLen, upright, target;
-    int i, air = 0, slot;
+    int i, air = 0, slot, broken = 0;
+    static int test = -2;
 
     if (!WM_Enabled() || dlPtr == NULL) {
         return;
     }
+    for (i = 0, s = g; i < 96 && (s->w0 >> 24) != 0xDF; i++, s++) {
+        if (s->w0 == 0xFA0000FE) {
+            prim = s;
+        } else if (prim != NULL && (s->w0 >> 24) == 0x01) {
+            v = (WMVtx *)(uintptr_t)s->w1;
+            break;
+        }
+    }
+    if (prim == NULL || v == NULL || (fan = wmFanSlot(v, 0)) == NULL) {
+        return;
+    }
+    fan->car = carPtr;
+
+    /* the lamps break with the front corners: lamp 0 (the car's right) with the right front
+       (zone 1), lamp 1 (its left) with the left front (zone 4), both with the front (zone 0),
+       each once its zone has lost about 40% (the front 65%). DD64_BREAKLAMP=zone (testing)
+       breaks that zone at once */
+    if (test == -2) {
+        const char *e = getenv("DD64_BREAKLAMP");
+        test = e != NULL ? atoi(e) : -1;
+    }
+    {
+        static const int kZone[3] = { 0, 1, 4 };
+        for (i = 0; i < 3; i++) {
+            s32 h = wmZoneHealth(carPtr, kZone[i]);
+            if (h > fan->zmax[i]) {
+                fan->zmax[i] = h;
+            }
+            if (test == kZone[i]) {
+                h = 0;
+            }
+            if (fan->zmax[i] > 0 && h * 100 < fan->zmax[i] * (i == 0 ? 35 : 60)) {
+                broken |= i == 0 ? 3 : i; /* zone 0 both, zone 1 lamp 0 (bit 1), zone 4 lamp 1 (bit 2) */
+            }
+        }
+    }
+    if (!fan->sized || broken != fan->broken) {
+        f32 k = wmIsHumanCar(carPtr) ? 0.70f : 0.50f;
+        {
+            /* the lamps from the car's own stats (CarStats at Car+0xBEC: +0x128 the rear
+               lamps, +0x170 the front ones), as Car_BuildLightDisplayLists read them */
+            const f32 *st = (const f32 *)((u8 *)carPtr + 0xBEC);
+            wmFanBuild(v, st + 0x128 / 4, st + 0x170 / 4, k, broken);
+        }
+        if (broken != fan->broken) {
+            /* the lamps' glow quads (G_TRI1, vertices 0-3 lamp 0, 4-7 lamp 1) off for a broken
+               lamp: the car shows its own unlit lamp texture again */
+            for (i = 0, s = g; s < prim; i++, s++) {
+                if ((s->w0 >> 24) == 0x05) {
+                    int lamp = ((s->w0 >> 16) & 0xFF) / 2 >= 4;
+                    if (broken & (1 << lamp)) {
+                        s->w0 = 0;
+                        s->w1 = 0;
+                    }
+                }
+            }
+        }
+        fan->sized = 1;
+        fan->broken = (u8)broken;
+    }
+
     Frame_ToMatrix(m, carPtr, 1);
     upLen = sqrtf(m[1][0] * m[1][0] + m[1][1] * m[1][1] + m[1][2] * m[1][2]);
     upright = upLen > 0.0001f ? m[1][1] / upLen : 1.0f;
@@ -1294,51 +1426,13 @@ void WM_HeadlightFade(void *carPtr, void *dlPtr) {
     if (target > 1.0f) target = 1.0f;
     if (target < 0.0f) target = 0.0f;
     if (air >= 2) target = 0.0f;
-    {
-        /* once per car: the fan made smaller about the lamps, 70% on a player's car, 50% on
-           the computer cars (the lights are built before the cars know who drives them) */
-        static void *sScaled[32];
-        WMGfx *s = g;
-        int j, n;
-        for (j = 0; j < 96 && (s->w0 >> 24) != 0xDF; j++, s++) {
-            if ((s->w0 >> 24) == 0x01 && j > 0 && (s - 1)->w0 == 0xE200001C && (s - 2)->w0 == 0xFA0000FE) {
-                WMVtx *v = (WMVtx *)(uintptr_t)s->w1;
-                int seen = 0;
-                for (n = 0; n < 32 && sScaled[n] != NULL; n++) {
-                    if (sScaled[n] == (void *)v) seen = 1;
-                }
-                if (!seen) {
-                    f32 k = wmIsHumanCar(carPtr) ? 0.70f : 0.50f;
-                    s16 cx = v[2].x, cy = v[2].y, cz = v[2].z; /* row 0, middle: between the lamps */
-                    for (n = 0; n < WM_FAN_ROWS * WM_FAN_COLS; n++) {
-                        v[n].x = (s16)(cx + (v[n].x - cx) * k);
-                        v[n].y = (s16)(cy + (v[n].y - cy) * k);
-                        v[n].z = (s16)(cz + (v[n].z - cz) * k);
-                    }
-                    for (n = 0; n < 32; n++) {
-                        if (sScaled[n] == NULL) { sScaled[n] = (void *)v; break; }
-                    }
-                    if (n == 32) { memset(sScaled, 0, sizeof(sScaled)); sScaled[0] = (void *)v; }
-                }
-                break;
-            }
-        }
-    }
     slot = (int)(((u32)(uintptr_t)carPtr >> 4) % 24);
     if (sCar[slot] != carPtr) {
         sCar[slot] = carPtr;
         sK[slot] = target;
     }
     sK[slot] += (target - sK[slot]) * 0.25f;
-    for (i = 0; i < 96; i++, g++) {
-        if (g->w0 == 0xFA0000FE) {
-            g->w1 = 0xFFFFFF00u | (u32)(sK[slot] * 255.0f);
-            return;
-        }
-        if ((g->w0 >> 24) == 0xDF) {
-            return;
-        }
-    }
+    prim->w1 = 0xFFFFFF00u | (u32)(sK[slot] * 255.0f);
 }
 
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
