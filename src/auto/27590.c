@@ -60,8 +60,89 @@ extern f32 Vec3f_DistXZ(Vec3f a, Vec3f b);
 extern s32 Track_FindNearestSegment(Vec3f p);
 extern s32 Race_FindCarSlot(s32 id);
 #ifdef TARGET_PC
+int WM_AiMode(void);
+void WM_AiRaceStart(void);
+#endif
+#ifdef TARGET_PC
 /* the doubled field: an extra car has its own slot past the 12 (port/game/field_part0.c) */
 s32 Port_Field0CarSlot(void *car, s32 slot);
+#endif
+
+#ifdef TARGET_PC
+/* A car on segment `seg` of the track, `f` across it (0-1), driving towards `sign` (+1 up
+   the segments, -1 down): as the N64 places each car below */
+static void wmPlaceOnSeg(Track *track, Car *car, s32 seg, s32 sign, f32 f) {
+    Vec3f p0, p1, dir;
+    s32 prev, k;
+    f32 len;
+
+    seg %= track->nsegs;
+    if (seg < 0) {
+        seg += track->nsegs;
+    }
+    prev = seg - sign;
+    if (prev < 0) {
+        prev = track->nsegs - 1;
+    }
+    if (prev >= track->nsegs) {
+        prev = 0;
+    }
+    car->dir = sign;
+    car->seg = seg;
+    p0.x = track->segs[prev].a.x + (track->segs[prev].b.x - track->segs[prev].a.x) * f;
+    p0.y = track->segs[prev].a.y + (track->segs[prev].b.y - track->segs[prev].a.y) * f + 1.0;
+    p0.z = track->segs[prev].a.z + (track->segs[prev].b.z - track->segs[prev].a.z) * f;
+    p1.x = track->segs[seg].a.x + (track->segs[seg].b.x - track->segs[seg].a.x) * f;
+    p1.y = track->segs[seg].a.y + (track->segs[seg].b.y - track->segs[seg].a.y) * f + 1.0;
+    p1.z = track->segs[seg].a.z + (track->segs[seg].b.z - track->segs[seg].a.z) * f;
+    len = Vec3f_DistXZ(p0, p1);
+    if (len < 0.001f) {
+        len = 0.001f;
+    }
+    p0.x = p0.x + (p1.x - p0.x) / len * 0.5;
+    p0.y = p0.y + (p1.y - p0.y) / len * 0.5;
+    p0.z = p0.z + (p1.z - p0.z) / len * 0.5;
+    car->pos = p0;
+    car->pos2 = p0;
+    dir.x = p1.x - p0.x;
+    dir.y = p1.y - p0.y;
+    dir.z = p1.z - p0.z;
+    car->basis = dir;
+    Basis_Orthonormalize(&car->basis);
+    car->basis2 = dir;
+    Basis_Orthonormalize(&car->basis2);
+    k = Port_Field0CarSlot(car, Race_FindCarSlot(car->id));
+    D_800D1B08[k] = p1;
+}
+
+/* Wrecked Metal's starts ([ai] mode, port/game/ai_director.c). The pack race: every car on
+   one grid behind the start line `start`, the player in the front row, two abreast, rows
+   three segments apart, all driving `sign` (the player's way). Head-on: the player and
+   the even computer cars on that grid; the odd ones spread over the far half of the lap
+   (35% to 75% of it ahead), driving the other way, at the player. */
+static void wmPlaceField(Track *track, s32 start, s32 sign, s32 mode) {
+    s32 n = track->ncars, ns = track->nsegs, i, row = 0, back = 0, nrev = 0, r = 0;
+
+    if (sign != 1 && sign != -1) {
+        sign = 1;
+    }
+    for (i = 1; i < n; i++) {
+        nrev += mode == 2 && (i & 1);
+    }
+    for (i = 0; i < n; i++) {
+        Car *car = track->cars[i];
+        if (mode == 2 && (i & 1)) {
+            /* coming the other way: evenly over 35%-75% of the lap ahead, alternating sides */
+            s32 seg = start + sign * (s32)(ns * 0.35f + (nrev > 1 ? ns * 0.40f * r / (nrev - 1) : ns * 0.20f));
+            wmPlaceOnSeg(track, car, seg, -sign, (r & 1) ? 0.3f : 0.7f);
+            r++;
+            continue;
+        }
+        row = back / 2;
+        wmPlaceOnSeg(track, car, start - sign * (2 + row * 3), sign, (back & 1) ? 0.72f : 0.28f);
+        back++;
+    }
+}
 #endif
 
 void Race_PlaceCarsOnGrid(void)
@@ -344,5 +425,14 @@ void Race_PlaceCarsOnGrid(void)
                 }
             }
         }
+#ifdef TARGET_PC
+        /* Wrecked Metal's pack race and head-on starts ([ai] mode), race tracks with one
+           player: the N64 placed the cars above (as the classic mode keeps them) */
+        WM_AiRaceStart();
+        if (WM_AiMode() != 0 && D_800958A4[0] == 1 && (D_800958A4[1] == 0 || D_800958A4[1] == 1) && n2 > 0 &&
+            gGame[0]->x10FC != 25) {
+            wmPlaceField(track, segs[0], gGame[0]->track->cars[0]->dir, WM_AiMode());
+        }
+#endif
     }
 }

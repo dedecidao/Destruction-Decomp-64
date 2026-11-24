@@ -38,6 +38,14 @@ static inline f32 Angle(Vec3f a, Vec3f b) {
     return acos(d / sqrtf((a.x * a.x + a.y * a.y + a.z * a.z) * (b.x * b.x + b.y * b.y + b.z * b.z))) * 57.29577957855229;
 }
 
+#ifdef TARGET_PC
+/* docs/bugs.md 20: cosf() was given degrees; Wrecked Metal ([ai] fix_bugs) gives it radians */
+int WM_AiFixBugs(void);
+#define AI_COS(deg) (WM_AiFixBugs() ? cosf((deg) * 0.017453292f) : cosf(deg))
+#else
+#define AI_COS(deg) cosf(deg)
+#endif
+
 void Ai_ComputeIntercept(void *a, void *b, Rel *out) {
     f32 sa = Car_GetSpeed(a);
     f32 sb = Car_GetSpeed(b);
@@ -60,10 +68,10 @@ void Ai_ComputeIntercept(void *a, void *b, Rel *out) {
         v.y = -v.y;
         v.z = -v.z;
         ang = Angle(v, Car_GetVelocity(b));
-        out->x8 = (sa + sa) * cosf(ang);
+        out->x8 = (sa + sa) * AI_COS(ang);
     } else {
         ang = Angle(Car_GetVelocity(a), Car_GetVelocity(b));
-        out->x8 = sa * cosf(ang);
+        out->x8 = sa * AI_COS(ang);
     }
     if (out->x8 == 0.0f || sb < 0.8 || out->x0 < 3.0) {
         out->xC = 0.0f;

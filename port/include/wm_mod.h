@@ -58,7 +58,14 @@ typedef struct {
     /* Car lights ([lights] in wm_tuning.ini) */
     int lightsAllTracks;        /* the night tracks' head and tail lights on every car, every track */
     int lightsGround;           /* with them, the player's headlights light the road */
+    /* Computer cars ([ai] in wm_tuning.ini, port/game/ai_director.c) */
+    int aiMode;                 /* WM_AI_CLASSIC, WM_AI_PACK_RACE, WM_AI_HEAD_ON */
+    int aiDirector;             /* the race director in the pack and head-on modes */
+    int aiFixBugs;              /* the two AI aiming bugs fixed (docs/bugs.md 19, 20) */
 } WMTuning;
+
+/* How the race tracks' computer cars start and drive ([ai] mode) */
+enum { WM_AI_CLASSIC, WM_AI_PACK_RACE, WM_AI_HEAD_ON, WM_AI_MODES };
 
 /* The HUD groups the widescreen layout moves ([hud] in wm_tuning.ini) */
 enum { WM_HUD_SCORE, WM_HUD_TIME, WM_HUD_CARS, WM_HUD_MAP, WM_HUD_DAMAGE, WM_HUD_PEDALS, WM_HUD_GROUPS };
@@ -109,6 +116,9 @@ void WM_EmitSparks(void *pool, void *car, float offX, float offY, float offZ, fl
 int WM_NightCarLights(int track);
 int WM_NightGroundLight(int track);
 int WM_CanInitAiSkid(void);
+int WM_AiMode(void);
+int WM_AiDirectorOn(void);
+int WM_AiFixBugs(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);

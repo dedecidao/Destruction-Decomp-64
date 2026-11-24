@@ -4,6 +4,7 @@
 /* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
 int WM_NightCarLights(int track);
 int WM_NightGroundLight(int track);
+void WM_DumpCarRecords(void);
 #endif
 
 typedef struct { s32 x0, x4, x8, xC, x10; } Zone;
@@ -174,6 +175,9 @@ Car *Car_Create(CarStats *s) {
     s32 model;
     s32 n;
 
+#ifdef TARGET_PC
+    WM_DumpCarRecords(); /* DD64_DUMPCARS (testing) */
+#endif
     car = Mem_Alloc(0xEA0);
     if (car == NULL) {
         return NULL;

@@ -1183,12 +1183,19 @@ typedef struct {
     WMGfx *tri[4];
     u32 triW0[4], triW1[4];
     u8 triSaved;
+    u32 used;           /* when it was last drawn (sFanClock); 0 never */
 } WMFan;
-static WMFan sFans[32];
+/* A slot per car display list: a race sets its cars up twice and every race makes new
+   lists, so slots nobody draws any more are reused, the longest unused first. (It used to
+   clear every slot once all 32 were taken, a few races in: the cars set up before that
+   lost theirs and their lamps no longer broke.) */
+#define WM_FAN_SLOTS 64
+static WMFan sFans[WM_FAN_SLOTS];
+static u32 sFanClock;
 
 static WMFan *wmFanSlot(WMVtx *v, int make) {
     int i, free = -1;
-    for (i = 0; i < 32; i++) {
+    for (i = 0; i < WM_FAN_SLOTS; i++) {
         if (sFans[i].v == v) {
             return &sFans[i];
         }
@@ -1200,8 +1207,12 @@ static WMFan *wmFanSlot(WMVtx *v, int make) {
         return NULL;
     }
     if (free < 0) {
-        memset(sFans, 0, sizeof(sFans));
         free = 0;
+        for (i = 1; i < WM_FAN_SLOTS; i++) {
+            if (sFans[i].used < sFans[free].used) {
+                free = i;
+            }
+        }
     }
     memset(&sFans[free], 0, sizeof(sFans[free]));
     sFans[free].v = v;
@@ -1330,13 +1341,17 @@ static f32 sLightMul = 1.0f;
 
 void WM_SetLightCar(void *carPtr) {
     int i;
+    WMFan *best = NULL;
     sLightMul = 1.0f;
-    for (i = 0; i < 32; i++) {
-        if (sFans[i].v != NULL && sFans[i].car == carPtr) {
-            int b = sFans[i].broken;
-            sLightMul = b == 3 ? 0.0f : b ? 0.55f : 1.0f;
-            return;
+    /* the car's slot drawn last (an old race's car may have had the same address) */
+    for (i = 0; i < WM_FAN_SLOTS; i++) {
+        if (sFans[i].v != NULL && sFans[i].car == carPtr && (best == NULL || sFans[i].used > best->used)) {
+            best = &sFans[i];
         }
+    }
+    if (best != NULL) {
+        int b = best->broken;
+        sLightMul = b == 3 ? 0.0f : b ? 0.55f : 1.0f;
     }
 }
 
@@ -1384,6 +1399,7 @@ void WM_HeadlightFade(void *carPtr, void *dlPtr) {
         return;
     }
     fan->car = carPtr;
+    fan->used = ++sFanClock;
 
     /* The lamps follow the front corners' damage (each zone starts at 3): lamp 0 (the car's
        right) the right front (zone 1), lamp 1 (its left) the left front (zone 4), both the
@@ -1410,7 +1426,9 @@ void WM_HeadlightFade(void *carPtr, void *dlPtr) {
             } else if (testFlick == kZone[i] && fan->zmax[i] > 0) {
                 h = fan->zmax[i] - 1;
             }
-            if (fan->zmax[i] > 0 && h * 100 < fan->zmax[i] * (i == 0 ? 35 : 60)) {
+            /* by the hits taken (the same for every car: some cars' corners take 10-12
+               hits, which a share of the zone's health left unbroken all race) */
+            if (fan->zmax[i] > 0 && fan->zmax[i] - h >= 2) {
                 broken |= bits;
             } else if (fan->zmax[i] > 0 && h < fan->zmax[i]) {
                 failing |= bits;

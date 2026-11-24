@@ -361,6 +361,12 @@ void Car_UpdatePhysics(Car *car, f32 dt) {
     }
     Car_SelectGear(car, -car->wheels[0].xf.spin * 9.5493);
     Car_UpdateEngineRpm(car);
+#ifdef TARGET_PC
+    {
+        void WM_LogGear(void *, f32);
+        WM_LogGear(car, sqrtf(car->body.cur.vel.x * car->body.cur.vel.x + car->body.cur.vel.y * car->body.cur.vel.y + car->body.cur.vel.z * car->body.cur.vel.z)); /* DD64_GEARLOG (testing) */
+    }
+#endif
     if ((car->wheels[0].x194.z < 1.0) == (car->wheels[1].x194.z < 1.0)) {
         car->wheels[1].xf.spin = car->wheels[0].xf.spin = (car->wheels[0].xf.spin + car->wheels[1].xf.spin) * 0.5;
     }
