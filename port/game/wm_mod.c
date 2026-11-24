@@ -5,6 +5,7 @@
  */
 #include "common.h"
 #include "wm_mod.h"
+#include <string.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -1293,6 +1294,36 @@ void WM_HeadlightFade(void *carPtr, void *dlPtr) {
     if (target > 1.0f) target = 1.0f;
     if (target < 0.0f) target = 0.0f;
     if (air >= 2) target = 0.0f;
+    {
+        /* once per car: the fan made smaller about the lamps, 70% on a player's car, 50% on
+           the computer cars (the lights are built before the cars know who drives them) */
+        static void *sScaled[32];
+        WMGfx *s = g;
+        int j, n;
+        for (j = 0; j < 96 && (s->w0 >> 24) != 0xDF; j++, s++) {
+            if ((s->w0 >> 24) == 0x01 && j > 0 && (s - 1)->w0 == 0xE200001C && (s - 2)->w0 == 0xFA0000FE) {
+                WMVtx *v = (WMVtx *)(uintptr_t)s->w1;
+                int seen = 0;
+                for (n = 0; n < 32 && sScaled[n] != NULL; n++) {
+                    if (sScaled[n] == (void *)v) seen = 1;
+                }
+                if (!seen) {
+                    f32 k = wmIsHumanCar(carPtr) ? 0.70f : 0.50f;
+                    s16 cx = v[2].x, cy = v[2].y, cz = v[2].z; /* row 0, middle: between the lamps */
+                    for (n = 0; n < WM_FAN_ROWS * WM_FAN_COLS; n++) {
+                        v[n].x = (s16)(cx + (v[n].x - cx) * k);
+                        v[n].y = (s16)(cy + (v[n].y - cy) * k);
+                        v[n].z = (s16)(cz + (v[n].z - cz) * k);
+                    }
+                    for (n = 0; n < 32; n++) {
+                        if (sScaled[n] == NULL) { sScaled[n] = (void *)v; break; }
+                    }
+                    if (n == 32) { memset(sScaled, 0, sizeof(sScaled)); sScaled[0] = (void *)v; }
+                }
+                break;
+            }
+        }
+    }
     slot = (int)(((u32)(uintptr_t)carPtr >> 4) % 24);
     if (sCar[slot] != carPtr) {
         sCar[slot] = carPtr;

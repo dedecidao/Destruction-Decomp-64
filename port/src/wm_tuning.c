@@ -104,7 +104,7 @@ static void setDefaults(WMTuning *t) {
     memcpy(t->hudScale, kHudScaleDefaults, sizeof(t->hudScale));
 
     t->lightsAllTracks = 1;
-    t->lightsGround = 0; /* the N64's light on the road: off, the beams replace it */
+    t->lightsGround = 1; /* the road and tunnel light, softened (Light_UpdateVertexColors) */
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -185,7 +185,7 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     }
     fprintf(f, "\n[lights]\n");
     fprintf(f, "; all_tracks = 1: every car's head and tail lights on, on every track, as the night tracks have them.\n");
-    fprintf(f, "; ground = 1: the N64's light on the road ahead of the player's car too (off: the beams do it).\n");
+    fprintf(f, "; ground = 1: the player's headlights also light the road and tunnel walls ahead (softened).\n");
     fprintf(f, "all_tracks = %d\n", t->lightsAllTracks);
     fprintf(f, "ground = %d\n", t->lightsGround);
     fprintf(f, "\n[hud]\n");

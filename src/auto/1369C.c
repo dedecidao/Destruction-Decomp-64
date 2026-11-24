@@ -1,5 +1,8 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+int WM_Enabled(void);
+#endif
 
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { s32 idx; u8 r, g, b, pad; } LitVert;
@@ -145,6 +148,30 @@ void Light_UpdateVertexColors(Light *light, Grid *grid, Vert *verts, f32 m[4][4]
             d.z = verts[vi].z;
             Vec3f_Sub(&d, &d, &light->pos);
             Vec3f_Dot(&dd, &d, &d);
+#ifdef TARGET_PC
+            if (WM_Enabled()) {
+                /* Wrecked Metal: a soft, warm pool instead of a flat white add: the light
+                   eases in from the edge of the circle ((1 - t^2)^2, no step where it
+                   begins) and peaks at about half the N64's strength, yellow-white */
+                f32 q = 1.0f - dd * inv;
+                if (q > 0.0f) {
+                    f32 a = q * q * 150.0f;
+                    c[0] = s->r + (s32)a;
+                    c[1] = s->g + (s32)(a * 0.90f);
+                    c[2] = s->b + (s32)(a * 0.60f);
+                    if (c[0] >= 256)
+                        c[0] = 255;
+                    if (c[1] >= 256)
+                        c[1] = 255;
+                    if (c[2] >= 256)
+                        c[2] = 255;
+                    verts[vi].r = c[0];
+                    verts[vi].g = c[1];
+                    verts[vi].b = c[2];
+                }
+                continue;
+            }
+#endif
             dd = 255.0f - dd * inv * 255.0f;
             if (0.0f < dd) {
                 c[0] = s->r + dd;
