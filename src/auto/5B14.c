@@ -72,6 +72,22 @@ void Ai_Steer(Car *car) {
     if (race->x10 == 0) {
         spd = Car_GetSpeed(car);
         lim = race->x34[car->x28].x0;
+#ifdef TARGET_PC
+        {
+            /* the race director (port/game/ai_director.c): 1 unless Wrecked Metal's pack or
+               head-on mode scales this car's pace */
+            f32 WM_AiSpeedScale(void *);
+            f32 k = WM_AiSpeedScale(car);
+            if (k != 1.0f) {
+                f32 l = lim * k;
+                if (l < spd || (ai->x10 == 12 && l - 5 < spd)) {
+                    brake = 1;
+                    accel = 0;
+                }
+                goto steer_done;
+            }
+        }
+#endif
         if (lim < spd) {
             brake = 1;
             accel = 0;
@@ -81,6 +97,9 @@ void Ai_Steer(Car *car) {
             accel = 0;
         }
     }
+#ifdef TARGET_PC
+steer_done:
+#endif
     in = car->x2C;
     in->accel = accel;
     in->brake = brake;

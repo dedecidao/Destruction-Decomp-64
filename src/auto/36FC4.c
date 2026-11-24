@@ -95,7 +95,14 @@ void CarAI_SteerToTarget(Car *car, f32 dt) {
     Vec3f_Sub(&dir, target, pos);
     Vec3f_Normalize(&dir, &dir);
     vel = p + 1;
+#ifdef TARGET_PC
+    {
+        f32 WM_AiSpeedScale(void *); /* the race director (port/game/ai_director.c) */
+        Vec3f_Scale(vel, &dir, race->x34[car->xBBC].x0 * car->xBC4 * WM_AiSpeedScale(car));
+    }
+#else
     Vec3f_Scale(vel, &dir, race->x34[car->xBBC].x0 * car->xBC4);
+#endif
     Vec3f_Scale(&step, vel, dt);
     Vec3f_Add(pos, pos, &step);
     r = rand() * (1.0f / 32767.0f);
