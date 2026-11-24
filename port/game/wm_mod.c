@@ -496,7 +496,8 @@ int WM_EmitWheelDust(void *carPtr, void *a, void *b) {
  * every car. Here, by health (cars start between 110 and 200):
  *   80..50   light: thin pale wisps
  *   50..21   medium: grey-white, steadier
- *   21..1    heavy: thick white, the N64's stage
+ *   21..1    heavy: thick white, the N64's stage, more and more of it black and greyer
+ *            as the health nears 0 (one extra particle under 10)
  *   0        black, before the car burns out
  * The player's car smokes at the full rate; the other cars at half of it (every other
  * frame per stage), which halves their particles. The wheel dust keeps WM_HOOD_RESERVE
@@ -568,7 +569,12 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
         life = 4;
     }
 
-    if (hp > 0) {
+    {
+    int n = (hp > 0 && hp < 10) ? 2 : 1, k;
+    for (k = 0; k < n && smokeObj->count < smokeObj->maxCount; k++) {
+    /* under 21 health, a share of the particles black: none at 21, nearly all at 1 */
+    int black = hp <= 0 || (hp < WM_HOOD_HEAVY && (rand() % WM_HOOD_HEAVY) >= hp);
+    if (!black) {
         /* white to grey, thicker and longer as the health drops; flattened at speed and
            spread to the sides by the airflow */
         f32 d = 1.0f - (f32)hp / (f32)WM_HOOD_LIGHT; /* 0 light .. ~1 heavy */
@@ -593,7 +599,12 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
         pt = (WMParticle *)Particle_Spawn(smokeObj, p, v, acc, scale, 0.30f + 0.04f * d,
                                           (u16)(life + 1), (u8)alphaStep, maxAlpha, 0, 0, 0);
         if (pt != NULL) {
-            u8 grey = (u8)(250 - (s32)(48.0f * d)); /* pale white, then greyer */
+            s32 g = 250 - (s32)(48.0f * d); /* pale white, then greyer */
+            u8 grey;
+            if (hp < WM_HOOD_HEAVY) {
+                g -= (WM_HOOD_HEAVY - hp) * 4; /* sooty near the end: down to about 120 */
+            }
+            grey = (u8)g;
             pt->r = grey;
             pt->g = grey;
             pt->b = (u8)(grey + (grey < 250 ? 5 : 0));
@@ -611,6 +622,8 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
         v.z = -m[0][2] * backPush + m[2][2] * latVel;
         Vec3f_Set(&acc, 0.0f, -0.025f * spdNorm, 0.0f);
         Particle_Spawn(smokeObj, p, v, acc, 7.6f, 0.32f, (u16)life, 50, 250, 0, 1, 1);
+    }
+    }
     }
     return 1;
 }
