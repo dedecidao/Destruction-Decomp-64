@@ -5,10 +5,12 @@
  */
 #include "common.h"
 #include "wm_mod.h"
+#include <math.h>
 #include <stdint.h>
 
 char *getenv(const char *);
 int atoi(const char *);
+double atof(const char *);
 
 typedef struct { u32 w0; u32 w1; } WMGfx;
 typedef struct { f32 x, y, z; } Vec3f;
@@ -1052,6 +1054,76 @@ static WMGfx *wmDrawLedBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, in
     return g;
 }
 
+/* ---- Impact sparks (the spark pool, D_801245A4 + 0xC) ---- */
+
+/*
+ * The N64 marks a hard wall hit (surfaces 5 and 8) with Particles_EmitTrail: a streak
+ * of still spark sprites along the car's last move. On top of it, and on car-to-car
+ * hits, Wrecked Metal throws a burst from the contact point: sparks flying out and up,
+ * carried a little by the car, falling back under gravity, shrinking and fading. Their
+ * number follows the hit's force, halved when no player's car is in it.
+ */
+typedef struct {
+    u8 pad0[4];
+    s32 count;          /* 0x04 */
+    u8 pad8[0xA0 - 0x8];
+    s32 maxCount;       /* 0xA0 (Particles_EmitTrail's limit) */
+} WMSparkObj;
+
+static int wmIsHumanCar(void *carPtr);
+
+void Frame_ToMatrix(f32 m[4][4], void *car, s32 world);
+
+void WM_EmitSparks(void *poolPtr, void *carPtr, f32 offX, f32 offY, f32 offZ, f32 force, void *otherCar) {
+    WMSparkObj *pool = (WMSparkObj *)poolPtr;
+    f32 m[4][4];
+    f32 s;
+    Vec3f base, v, acc;
+    int n, i;
+    static f32 kv = -1.0f, sz = 12.0f;
+
+    if (!WM_Enabled() || pool == NULL || gGame == NULL) {
+        return;
+    }
+    if (kv < 0.0f) {
+        const char *e = getenv("DD64_SPARKV"); /* testing: the speed scale */
+        const char *z = getenv("DD64_SPARKSIZE"); /* testing: the size */
+        kv = e != NULL ? (f32)atof(e) : 1.0f;
+        sz = z != NULL ? (f32)atof(z) : 12.0f;
+    }
+    s = gGame->x1100->x70->xC->x10;
+    n = 6 + (int)(force * 0.6f);
+    if (n > 18) {
+        n = 18;
+    }
+    if (!wmIsHumanCar(carPtr) && (otherCar == NULL || !wmIsHumanCar(otherCar))) {
+        n /= 2; /* the computer cars' own hits, mostly off screen */
+    }
+    /* where the car is, as the hood smoke takes it (Car_UpdateWreck), plus the contact's offset */
+    Frame_ToMatrix(m, carPtr, 1);
+    base.x = (m[3][0] + offX) * s;
+    base.y = (m[3][1] + offY) * s;
+    base.z = (m[3][2] + offZ) * s;
+    Vec3f_Set(&acc, 0.0f, -0.11f * kv, 0.0f);
+    for (i = 0; i < n && pool->count < pool->maxCount; i++) {
+        f32 spread = (0.5f + (f32)(rand() % 100) * 0.007f) * kv; /* 0.5 .. 1.2 sideways */
+        f32 ang = (f32)(rand() % 628) * 0.01f;
+        WMParticle *pt;
+        u8 g = (u8)(205 + rand() % 51);
+        v.x = cosf(ang) * spread;
+        v.y = (0.9f + (f32)(rand() % 100) * 0.009f) * kv; /* 0.9 .. 1.8 up */
+        v.z = sinf(ang) * spread;
+        pt = (WMParticle *)Particle_Spawn(poolPtr, base, v, acc, sz + (f32)(rand() % 100) * 0.03f, -sz * 0.05f,
+                                          (u16)(10 + rand() % 7), 0x12, 0xFF, 0, 0, 0);
+        if (pt != NULL) {
+            int hot = rand() % 4; /* a quarter white-hot, the rest yellow to orange */
+            pt->r = 255;
+            pt->g = hot == 0 ? 250 : (u8)(g - 50);
+            pt->b = hot == 0 ? 210 : (u8)(30 + rand() % 70);
+        }
+    }
+}
+
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     if (target > cur) {
         cur += (target - cur) * riseRate + 0.025f;
@@ -1105,6 +1177,18 @@ void *WM_HudDraw(void *gfxPtr) {
         if (e != NULL && car != NULL && applied != (void *)car) {
             car->health = atoi(e);
             applied = car;
+        }
+    }
+    {
+        /* DD64_SPARKTEST=n (testing): a spark burst off the player's car every n frames */
+        static int every = -1;
+        static int f;
+        if (every < 0) {
+            const char *e = getenv("DD64_SPARKTEST");
+            every = e != NULL ? atoi(e) : 0;
+        }
+        if (every > 0 && car != NULL && D_801245A4 != NULL && ++f % every == 0) {
+            WM_EmitSparks(D_801245A4 + 0xC, car, 0.0f, 0.5f, 0.0f, 15.0f, NULL);
         }
     }
     if (car == NULL || car->wrecked) {
