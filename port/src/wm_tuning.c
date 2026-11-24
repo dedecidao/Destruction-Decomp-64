@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 9 /* 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 10 /* 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -105,6 +105,10 @@ static void setDefaults(WMTuning *t) {
 
     t->lightsAllTracks = 1;
     t->lightsGround = 1; /* the road and tunnel light, softened (Light_UpdateVertexColors) */
+
+    t->aiMode = WM_AI_CLASSIC;
+    t->aiDirector = 1;
+    t->aiFixBugs = 1;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -188,6 +192,15 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; ground = 1: the player's headlights also light the road and tunnel walls ahead (softened).\n");
     fprintf(f, "all_tracks = %d\n", t->lightsAllTracks);
     fprintf(f, "ground = %d\n", t->lightsGround);
+    fprintf(f, "\n[ai]\n");
+    fprintf(f, "; Race tracks, one player. mode = 0 classic (the N64's start: three groups, two of them driving\n");
+    fprintf(f, ";   the other way round), 1 pack race (every car on one grid with you, all the same way),\n");
+    fprintf(f, ";   2 head-on (half the computer cars on your grid, half coming at you from the far half).\n");
+    fprintf(f, "; director = 1: in modes 1 and 2, cars far behind catch up and leaders far ahead ease off,\n");
+    fprintf(f, ";   never within 120 m of you. fix_bugs = 1: the AI's two aiming bugs fixed (docs/bugs.md 19, 20).\n");
+    fprintf(f, "mode = %d\n", t->aiMode);
+    fprintf(f, "director = %d\n", t->aiDirector);
+    fprintf(f, "fix_bugs = %d\n", t->aiFixBugs);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -231,6 +244,16 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->lightsAllTracks = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "ground") == 0) {
             t->lightsGround = atoi(val) != 0;
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "ai") == 0) {
+        if (SDL_strcasecmp(key, "mode") == 0) {
+            t->aiMode = clampi(atoi(val), 0, WM_AI_MODES - 1);
+        } else if (SDL_strcasecmp(key, "director") == 0) {
+            t->aiDirector = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "fix_bugs") == 0) {
+            t->aiFixBugs = atoi(val) != 0;
         }
         return;
     }
@@ -449,6 +472,27 @@ int WM_NightGroundLight(int track) {
         return sTuning.lightsAllTracks && sTuning.lightsGround; /* the beams instead, by default */
     }
     return track == 2 || track == 11;
+}
+
+/* [ai] mode, read when a race places its cars (DD64_AIMODE=0-2 overrides it, for testing) */
+int WM_AiMode(void) {
+    const char *e;
+    if (!WM_Enabled()) {
+        return WM_AI_CLASSIC;
+    }
+    e = SDL_getenv("DD64_AIMODE");
+    if (e != NULL) {
+        return clampi(atoi(e), 0, WM_AI_MODES - 1);
+    }
+    return sTuning.aiMode;
+}
+
+int WM_AiDirectorOn(void) {
+    return WM_Enabled() && sTuning.aiDirector;
+}
+
+int WM_AiFixBugs(void) {
+    return WM_Enabled() && sTuning.aiFixBugs;
 }
 
 int WM_HudBarsEnabled(void) {
