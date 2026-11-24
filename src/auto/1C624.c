@@ -86,6 +86,7 @@ extern f32 Car_GetSpeed(Car *);
 extern void Standings_Resort(void *, Car *);
 #ifdef TARGET_PC
 s32 Port_Field0CarSlot(void *car, s32 slot);
+int WM_WreckPushable(void);
 s32 *Port_Field0WreckPlace(s32 slot);
 #endif
 
@@ -257,6 +258,27 @@ void Car_UpdateWreck(Car *car) {
     if (D_80095628 && car->x3C != NULL) {
         s6 = 1;
     }
+#ifdef TARGET_PC
+    /* Wrecked Metal: a wreck is a parked car, not a rock: no handbrake, so it can be
+       pushed and dragged; slow, it settles gently instead of being frozen (wm_cars.c) */
+    if (car->xD && WM_WreckPushable()) {
+        car->x2C->x0 = 0;
+        car->x2C->x1 = 0;
+        car->x2C->x2 = 0;
+        car->x2C->x3 = 0;
+        car->x2C->x4 = 0;
+        car->x2C->x6 = 0;
+        { void WM_WreckLogMove(void *, f32); WM_WreckLogMove(car, Car_GetSpeed(car)); }
+        if (Car_GetSpeed(car) <= 1.0) {
+            car->x224.x *= 0.92f;
+            car->x224.y *= 0.92f;
+            car->x224.z *= 0.92f;
+            car->x230.x *= 0.92f;
+            car->x230.y *= 0.92f;
+            car->x230.z *= 0.92f;
+        }
+    } else
+#endif
     if (car->xD || (gGame[0]->x10FC == 0x1D && !s6)) {
         car->x2C->x0 = 0;
         car->x2C->x1 = 0;
