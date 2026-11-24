@@ -1,5 +1,10 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
+#endif
 
 typedef struct { s32 x0, x4, x8, xC, x10; } Zone;
 typedef struct {
@@ -246,7 +251,11 @@ Car *Car_Create(CarStats *s) {
             ply->x20 = car;
             car->x30 = 0;
             D_80091B14[n] = 0;
+#ifdef TARGET_PC
+            if (WM_NightGroundLight(D_800958B4[0])) {
+#else
             if (D_800958B4[0] == 2 || D_800958B4[0] == 11) {
+#endif
                 func_80012A20(&car->xB80);
             }
             if (D_800D31CC < 3) {

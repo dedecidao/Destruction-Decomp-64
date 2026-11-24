@@ -71,10 +71,19 @@ void Light_UpdateVertexColors(Light *light, Grid *grid, Vert *verts, f32 m[4][4]
         x0 = 0;
     if (z0 < 0)
         z0 = 0;
+#ifdef TARGET_PC
+    /* docs/bugs.md #3: the loops run to x1 and z1 inclusive, so the last cell is w - 1, h - 1
+       (the N64's w, h read past the cell array at the grid's edge) */
+    if (x1 >= grid->w)
+        x1 = grid->w - 1;
+    if (z1 >= grid->h)
+        z1 = grid->h - 1;
+#else
     if (x1 >= grid->w)
         x1 = grid->w;
     if (z1 >= grid->h)
         z1 = grid->h;
+#endif
 
     s = light->saved;
     light->curCount = 0;

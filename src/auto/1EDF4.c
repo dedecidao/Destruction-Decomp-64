@@ -1,5 +1,10 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
+#endif
 
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { u32 w0; u32 w1; } Gfx;
@@ -82,7 +87,11 @@ void Car_BuildLightDisplayLists(Car *car, CarStats *s) {
             vtx++;
         }
     }
+#ifdef TARGET_PC
+    if (WM_NightCarLights(D_800958B4)) {
+#else
     if (D_800958B4 == 2 || D_800958B4 == 11) {
+#endif
         Heap_Alloc(gMainHeap, car->xB44, 0xC0, 7, 0);
         gfx = HeapBlock_Ptr(car->xB44);
         Heap_Alloc(gMainHeap, car->xB5C, 0x80, 7, 0);
