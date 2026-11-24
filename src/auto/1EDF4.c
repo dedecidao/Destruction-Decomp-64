@@ -132,9 +132,9 @@ void Car_BuildLightDisplayLists(Car *car, CarStats *s) {
         }
 #ifdef TARGET_PC
         /* room for Wrecked Metal's headlight beams after the glow quads (WM_HeadlightBeams) */
-        Heap_Alloc(gMainHeap, car->xB4C, 0x180, 7, 0);
+        Heap_Alloc(gMainHeap, car->xB4C, 0x200, 7, 0);
         gfx = HeapBlock_Ptr(car->xB4C);
-        Heap_Alloc(gMainHeap, car->xB64, 0x100, 7, 0);
+        Heap_Alloc(gMainHeap, car->xB64, 0x240, 7, 0); /* 8 glow + 25 fan vertices */
         vtx = HeapBlock_Ptr(car->xB64);
         WM_WarmHeadlightTexture(D_80090930);
 #else
@@ -160,7 +160,7 @@ void Car_BuildLightDisplayLists(Car *car, CarStats *s) {
         GFX2(gfx, 0x05080A0C, 0);
         GFX2(gfx, 0x050E0C0A, 0);
 #ifdef TARGET_PC
-        /* the beams: vertices 8-15 of the same buffer, made below with the glow quads' */
+        /* the light on the road: vertices 8-32 of the same buffer */
         gfx = (Gfx *)WM_HeadlightBeams(gfx, (u8 *)vtx + 8 * sizeof(Vtx), &s->x128[0].x, &s->x170[0].x);
 #endif
         GFX2(gfx, 0xDF000000, 0);

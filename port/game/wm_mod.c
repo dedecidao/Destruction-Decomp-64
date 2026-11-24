@@ -1151,87 +1151,109 @@ void WM_WarmHeadlightTexture(void *tex) {
 }
 
 /*
- * A beam ahead of each headlight, as the tunnels' light shafts are drawn: a few translucent
- * polygons, no texture, the colour and the fade in the vertices (bright at the lamp, nothing
- * at the far end), drawn after the lamps' glow in the car's own display list, so it follows
- * the car for free. Two quads a car (8 vertices, 4 triangles). Wrecked Metal mode only.
+ * The headlights' light on the road ahead: one soft fan per car, as a light pool would
+ * fall on the asphalt. A 5 x 5 grid of vertices in the car's own space (drawn in its display
+ * list, so it follows the car for free): it starts at the lamps, drops to just above the
+ * road, opens to about three car widths, and fades in its vertices, with alpha 0 on every
+ * edge (no straight cut anywhere) and the far end rounded. The two lamps' light merges a
+ * little ahead of the bumper, with a short darker V between them. Untextured, the colour
+ * and the fade in the vertices: 25 vertices, 32 small triangles a car.
  */
+#define WM_FAN_ROWS 5
+#define WM_FAN_COLS 5
+
 void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const float *front) {
+    /* along the beam (car lengths), its half width (in half lamp spacings), its alpha */
+    static const f32 kDist[WM_FAN_ROWS] = { 0.0f, 1.0f, 2.6f, 4.4f, 6.0f };
+    static const f32 kHalf[WM_FAN_ROWS] = { 1.25f, 3.2f, 5.2f, 6.4f, 5.8f };
+    static const u8 kAlphaLamp[WM_FAN_ROWS] = { 110, 145, 115, 55, 0 }; /* columns 1 and 3 */
+    static const u8 kAlphaMid[WM_FAN_ROWS] = { 20, 140, 145, 62, 0 };   /* column 2: dark V only at the bumper */
+    static const f32 kCol[WM_FAN_COLS] = { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f };
     WMGfx *g = (WMGfx *)gfxPtr;
     WMVtx *v = (WMVtx *)vtxPtr;
-    f32 fwd[3], side[3], up[3], len, w0, w1, L, drop;
-    int i, k;
+    f32 fwd[3], side[3], up[3], mid[3], len, sl, ul, halfLamp, ground, alphaMul;
+    int r, c, k;
 
     if (!WM_Enabled()) {
         return gfxPtr;
     }
-    /* the car's axes from its lamps: rear lamp to front lamp is forward, left to right lamp is side */
     for (k = 0; k < 3; k++) {
         fwd[k] = (front[k] + front[3 + k]) * 0.5f - (rear[k] + rear[3 + k]) * 0.5f;
         side[k] = front[3 + k] - front[k];
+        mid[k] = (front[k] + front[3 + k]) * 0.5f;
     }
     len = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
-    if (len < 0.001f) {
+    sl = sqrtf(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+    if (len < 0.001f || sl < 0.001f) {
         return gfxPtr;
     }
     for (k = 0; k < 3; k++) {
         fwd[k] /= len;
+        side[k] /= sl;
     }
     up[0] = fwd[1] * side[2] - fwd[2] * side[1];
     up[1] = fwd[2] * side[0] - fwd[0] * side[2];
     up[2] = fwd[0] * side[1] - fwd[1] * side[0];
+    ul = sqrtf(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+    if (ul < 0.001f) {
+        return gfxPtr;
+    }
+    for (k = 0; k < 3; k++) {
+        up[k] /= ul;
+    }
     {
-        f32 ul = sqrtf(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
-        f32 sl = sqrtf(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
-        if (ul < 0.001f || sl < 0.001f) {
-            return gfxPtr;
-        }
-        for (k = 0; k < 3; k++) {
-            up[k] /= ul;
-            side[k] /= sl;
-        }
-        {
-            /* testing: DD64_BEAMUP=-1 flips which way the beam tilts */
-            const char *e = getenv("DD64_BEAMUP");
-            if (e != NULL && atoi(e) < 0) {
-                for (k = 0; k < 3; k++) up[k] = -up[k];
-            }
+        const char *e = getenv("DD64_BEAMUP"); /* testing: flips the side the road is on */
+        if (e != NULL && atoi(e) < 0) {
+            for (k = 0; k < 3; k++) up[k] = -up[k];
         }
     }
-    L = len * 2.6f;       /* the beam reaches about two and a half car lengths */
-    w0 = len * 0.05f;     /* narrow at the lamp */
-    w1 = len * 0.28f;     /* wide at the far end */
-    drop = len * 0.06f;   /* aimed a touch down, at the road */
+    halfLamp = sl * 0.5f;
+    {
+        /* the lamps' height over the road, about (car lengths); the fan lies just above it.
+           DD64_FANGROUND / DD64_FANALPHA tune it in tests */
+        const char *e = getenv("DD64_FANGROUND");
+        const char *f = getenv("DD64_FANALPHA");
+        ground = len * (e != NULL ? (f32)atof(e) : 0.02f);
+        alphaMul = f != NULL ? (f32)atof(f) : 1.0f;
+    }
 
-    for (i = 0; i < 2; i++) {
-        const float *o = front + i * 3;
-        f32 corner[4][3];
-        for (k = 0; k < 3; k++) {
-            corner[0][k] = o[k] - side[k] * w0;
-            corner[1][k] = o[k] + side[k] * w0;
-            corner[2][k] = o[k] + fwd[k] * L + side[k] * w1 - up[k] * drop;
-            corner[3][k] = o[k] + fwd[k] * L - side[k] * w1 - up[k] * drop;
-        }
-        for (k = 0; k < 4; k++) {
-            WMVtx *q = &v[i * 4 + k];
-            q->x = (s16)(corner[k][0] * 100.0f);
-            q->y = (s16)(corner[k][1] * 100.0f);
-            q->z = (s16)(corner[k][2] * 100.0f);
+    for (r = 0; r < WM_FAN_ROWS; r++) {
+        for (c = 0; c < WM_FAN_COLS; c++) {
+            WMVtx *q = &v[r * WM_FAN_COLS + c];
+            f32 d = kDist[r] * len, h = r == 0 ? 0.0f : -ground, w = kCol[c] * kHalf[r] * halfLamp;
+            f32 p[3];
+            u8 a;
+            if (r == WM_FAN_ROWS - 1) {
+                /* the far end rounded: the outer columns come back toward the lamps */
+                d -= (c == 0 || c == 4 ? 1.3f : c == 2 ? 0.0f : 0.35f) * len;
+            }
+            for (k = 0; k < 3; k++) {
+                p[k] = mid[k] + fwd[k] * d + side[k] * w + up[k] * h;
+            }
+            a = (c == 0 || c == 4) ? 0 : (c == 2 ? kAlphaMid[r] : kAlphaLamp[r]);
+            q->x = (s16)(p[0] * 100.0f);
+            q->y = (s16)(p[1] * 100.0f);
+            q->z = (s16)(p[2] * 100.0f);
             q->flag = 0;
             q->s = q->t = 0;
             q->r = 255;
-            q->g = k < 2 ? 244 : 230; /* white-yellow, a little warmer far out */
-            q->b = k < 2 ? 205 : 160;
-            q->a = k < 2 ? 125 : 14;  /* the fade */
+            q->g = (u8)(240 - r * 4); /* white-yellow, a little warmer far out */
+            q->b = (u8)(196 - r * 10);
+            q->a = (u8)(a * alphaMul > 255.0f ? 255 : a * alphaMul);
         }
     }
     WM_GFX2(g, 0xE7000000, 0);
     WM_GFX2(g, 0xD9FDF9FF, 0x00200004);          /* no lighting, no culling; shade, smooth */
     WM_GFX2(g, 0xFCFFFFFF, 0xFFFE793C);          /* G_CC_SHADE: the vertex colour and alpha */
-    WM_GFX2(g, 0xE200001C, 0x00504A50);          /* G_RM_ZB_XLU_SURF2-ish: depth tested, not written, blended */
-    WM_GFX2(g, 0x01008010, (u32)(uintptr_t)v);   /* 8 vertices into slots 0-7 */
-    WM_GFX2(g, 0x06000204, 0x00000406);          /* beam 1: 0 1 2, 0 2 3 */
-    WM_GFX2(g, 0x06080A0C, 0x00080C0E);          /* beam 2: 4 5 6, 4 6 7 */
+    WM_GFX2(g, 0xE200001C, 0x00504A50);          /* depth tested, not written, blended */
+    WM_GFX2(g, 0x01000000 | ((WM_FAN_ROWS * WM_FAN_COLS) << 12) | ((WM_FAN_ROWS * WM_FAN_COLS) << 1),
+            (u32)(uintptr_t)v);                  /* 25 vertices into slots 0-24 */
+    for (r = 0; r + 1 < WM_FAN_ROWS; r++) {
+        for (c = 0; c + 1 < WM_FAN_COLS; c++) {
+            u32 a0 = r * WM_FAN_COLS + c, a1 = a0 + 1, b0 = a0 + WM_FAN_COLS, b1 = b0 + 1;
+            WM_GFX2(g, 0x06000000 | (a0 * 2) << 16 | (a1 * 2) << 8 | (b1 * 2), (a0 * 2) << 16 | (b1 * 2) << 8 | (b0 * 2));
+        }
+    }
     WM_GFX2(g, 0xD9FFFFFF, 0x00020000);          /* lighting back on for what follows */
     return g;
 }
