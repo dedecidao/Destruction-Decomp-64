@@ -63,3 +63,32 @@ void WM_DumpCarRecords(void) {
     fclose(f);
     Port_Log("cars: dumped %d records to %s", WM_CARS, path);
 }
+
+/* DD64_GEARLOG (testing): the player's gearbox each time its gear changes and every
+   15 frames: the physics gear and rpm (Car_SelectGear: Car+0xA58, +0xA54, which set the
+   drive torque), the engine sound's gear and rpm (Car_UpdateEngineRpm: +0xBA4, +0xBA8)
+   and the speed */
+void WM_LogGear(void *car, f32 speed) {
+    static int on = -1, n, lastGear = -1, lastSnd = -1;
+    u8 *c = (u8 *)car;
+    s32 gear, rpm, sndGear;
+    f32 sndRpm;
+    if (on < 0) {
+        on = getenv("DD64_GEARLOG") != NULL;
+    }
+    if (!on || *(s32 *)(c + 0x30) != 0) { /* the player's car only (Car_Create) */
+        return;
+    }
+    gear = *(s32 *)(c + 0xA58);
+    rpm = *(s32 *)(c + 0xA54);
+    sndGear = *(s32 *)(c + 0xBA4);
+    sndRpm = *(f32 *)(c + 0xBA8);
+    n++;
+    if (gear != lastGear || sndGear != lastSnd || n % 15 == 0) {
+        Port_Log("gear: f%d model %d gear %d rpm %d | sound gear %d rpm %.0f | %.1f km/h (%.1f mph)%s", n,
+                 *(s32 *)(c + 0x34), gear, rpm, sndGear, (double)sndRpm, (double)(speed * 3.6f),
+                 (double)(speed * 2.2369f), gear != lastGear ? " <- shift" : "");
+        lastGear = gear;
+        lastSnd = sndGear;
+    }
+}
