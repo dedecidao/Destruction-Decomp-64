@@ -1096,9 +1096,7 @@ void WM_EmitSparks(void *poolPtr, void *carPtr, f32 offX, f32 offY, f32 offZ, f3
     if (n > 18) {
         n = 18;
     }
-    if (!wmIsHumanCar(carPtr) && (otherCar == NULL || !wmIsHumanCar(otherCar))) {
-        n /= 2; /* the computer cars' own hits, mostly off screen */
-    }
+    /* (the computer cars' own hits get the full burst too: they are seen from afar) */
     /* where the car is, as the hood smoke takes it (Car_UpdateWreck), plus the contact's offset */
     Frame_ToMatrix(m, carPtr, 1);
     base.x = (m[3][0] + offX) * s;
@@ -1106,22 +1104,136 @@ void WM_EmitSparks(void *poolPtr, void *carPtr, f32 offX, f32 offY, f32 offZ, f3
     base.z = (m[3][2] + offZ) * s;
     Vec3f_Set(&acc, 0.0f, -0.11f * kv, 0.0f);
     for (i = 0; i < n && pool->count < pool->maxCount; i++) {
-        f32 spread = (0.5f + (f32)(rand() % 100) * 0.007f) * kv; /* 0.5 .. 1.2 sideways */
+        int far = rand() % 7 == 0; /* about one in seven flies off further and lives longer */
+        f32 spread = (far ? 1.4f + (f32)(rand() % 100) * 0.01f : 0.45f + (f32)(rand() % 100) * 0.007f) * kv;
         f32 ang = (f32)(rand() % 628) * 0.01f;
         WMParticle *pt;
-        u8 g = (u8)(205 + rand() % 51);
         v.x = cosf(ang) * spread;
-        v.y = (0.9f + (f32)(rand() % 100) * 0.009f) * kv; /* 0.9 .. 1.8 up */
+        v.y = (0.45f + (f32)(rand() % 100) * 0.006f) * kv; /* 0.45 .. 1.05 up: a low spray */
         v.z = sinf(ang) * spread;
         pt = (WMParticle *)Particle_Spawn(poolPtr, base, v, acc, sz + (f32)(rand() % 100) * 0.03f, -sz * 0.05f,
-                                          (u16)(10 + rand() % 7), 0x12, 0xFF, 0, 0, 0);
+                                          (u16)((far ? 16 : 9) + rand() % 6), 0x12, 0xFF, 0, 0, 0);
         if (pt != NULL) {
-            int hot = rand() % 4; /* a quarter white-hot, the rest yellow to orange */
-            pt->r = 255;
-            pt->g = hot == 0 ? 250 : (u8)(g - 50);
-            pt->b = hot == 0 ? 210 : (u8)(30 + rand() % 70);
+            /* hot metal: white, yellow, orange and a few red-orange embers */
+            static const u8 kSpark[6][3] = { { 255, 252, 230 }, { 255, 240, 150 }, { 255, 214, 70 },
+                                             { 255, 170, 40 }, { 255, 128, 24 }, { 240, 82, 20 } };
+            const u8 *c = kSpark[far ? 3 + rand() % 3 : rand() % 5];
+            pt->r = c[0];
+            pt->g = c[1];
+            pt->b = c[2];
         }
     }
+}
+
+/* ---- Headlight beams (Car_BuildLightDisplayLists, src/auto/1EDF4.c) ---- */
+
+typedef struct { s16 x, y, z; u16 flag; s16 s, t; u8 r, g, b, a; } WMVtx;
+
+/* The headlights' glow texture (32x32 RGBA16) warmer, once: a 1990s sealed-beam white-yellow */
+void WM_WarmHeadlightTexture(void *tex) {
+    static void *done;
+    u16 *p = (u16 *)tex;
+    int i;
+
+    if (!WM_Enabled() || tex == NULL || done == tex) {
+        return;
+    }
+    done = tex;
+    for (i = 0; i < 32 * 32; i++) {
+        u16 c = p[i]; /* RGBA 5551, as the game stores it (the port keeps it big-endian in memory) */
+        u16 be = (u16)((c >> 8) | (c << 8));
+        u32 r = (be >> 11) & 31, g = (be >> 6) & 31, b = (be >> 1) & 31, a = be & 1;
+        g = g * 29 / 31;
+        b = b * 19 / 31;
+        be = (u16)((r << 11) | (g << 6) | (b << 1) | a);
+        p[i] = (u16)((be >> 8) | (be << 8));
+    }
+}
+
+/*
+ * A beam ahead of each headlight, as the tunnels' light shafts are drawn: a few translucent
+ * polygons, no texture, the colour and the fade in the vertices (bright at the lamp, nothing
+ * at the far end), drawn after the lamps' glow in the car's own display list, so it follows
+ * the car for free. Two quads a car (8 vertices, 4 triangles). Wrecked Metal mode only.
+ */
+void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const float *front) {
+    WMGfx *g = (WMGfx *)gfxPtr;
+    WMVtx *v = (WMVtx *)vtxPtr;
+    f32 fwd[3], side[3], up[3], len, w0, w1, L, drop;
+    int i, k;
+
+    if (!WM_Enabled()) {
+        return gfxPtr;
+    }
+    /* the car's axes from its lamps: rear lamp to front lamp is forward, left to right lamp is side */
+    for (k = 0; k < 3; k++) {
+        fwd[k] = (front[k] + front[3 + k]) * 0.5f - (rear[k] + rear[3 + k]) * 0.5f;
+        side[k] = front[3 + k] - front[k];
+    }
+    len = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
+    if (len < 0.001f) {
+        return gfxPtr;
+    }
+    for (k = 0; k < 3; k++) {
+        fwd[k] /= len;
+    }
+    up[0] = fwd[1] * side[2] - fwd[2] * side[1];
+    up[1] = fwd[2] * side[0] - fwd[0] * side[2];
+    up[2] = fwd[0] * side[1] - fwd[1] * side[0];
+    {
+        f32 ul = sqrtf(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+        f32 sl = sqrtf(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+        if (ul < 0.001f || sl < 0.001f) {
+            return gfxPtr;
+        }
+        for (k = 0; k < 3; k++) {
+            up[k] /= ul;
+            side[k] /= sl;
+        }
+        {
+            /* testing: DD64_BEAMUP=-1 flips which way the beam tilts */
+            const char *e = getenv("DD64_BEAMUP");
+            if (e != NULL && atoi(e) < 0) {
+                for (k = 0; k < 3; k++) up[k] = -up[k];
+            }
+        }
+    }
+    L = len * 2.6f;       /* the beam reaches about two and a half car lengths */
+    w0 = len * 0.05f;     /* narrow at the lamp */
+    w1 = len * 0.28f;     /* wide at the far end */
+    drop = len * 0.06f;   /* aimed a touch down, at the road */
+
+    for (i = 0; i < 2; i++) {
+        const float *o = front + i * 3;
+        f32 corner[4][3];
+        for (k = 0; k < 3; k++) {
+            corner[0][k] = o[k] - side[k] * w0;
+            corner[1][k] = o[k] + side[k] * w0;
+            corner[2][k] = o[k] + fwd[k] * L + side[k] * w1 - up[k] * drop;
+            corner[3][k] = o[k] + fwd[k] * L - side[k] * w1 - up[k] * drop;
+        }
+        for (k = 0; k < 4; k++) {
+            WMVtx *q = &v[i * 4 + k];
+            q->x = (s16)(corner[k][0] * 100.0f);
+            q->y = (s16)(corner[k][1] * 100.0f);
+            q->z = (s16)(corner[k][2] * 100.0f);
+            q->flag = 0;
+            q->s = q->t = 0;
+            q->r = 255;
+            q->g = k < 2 ? 244 : 230; /* white-yellow, a little warmer far out */
+            q->b = k < 2 ? 205 : 160;
+            q->a = k < 2 ? 125 : 14;  /* the fade */
+        }
+    }
+    WM_GFX2(g, 0xE7000000, 0);
+    WM_GFX2(g, 0xD9FDF9FF, 0x00200004);          /* no lighting, no culling; shade, smooth */
+    WM_GFX2(g, 0xFCFFFFFF, 0xFFFE793C);          /* G_CC_SHADE: the vertex colour and alpha */
+    WM_GFX2(g, 0xE200001C, 0x00504A50);          /* G_RM_ZB_XLU_SURF2-ish: depth tested, not written, blended */
+    WM_GFX2(g, 0x01008010, (u32)(uintptr_t)v);   /* 8 vertices into slots 0-7 */
+    WM_GFX2(g, 0x06000204, 0x00000406);          /* beam 1: 0 1 2, 0 2 3 */
+    WM_GFX2(g, 0x06080A0C, 0x00080C0E);          /* beam 2: 4 5 6, 4 6 7 */
+    WM_GFX2(g, 0xD9FFFFFF, 0x00020000);          /* lighting back on for what follows */
+    return g;
 }
 
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
