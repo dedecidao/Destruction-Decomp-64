@@ -1,168 +1,242 @@
-# Carros: registro de status, marchas e o que cada valor faz
+# Guia dos carros: status, marchas e o que cada número faz
 
-Este documento lista tudo o que o jogo guarda de cada carro, com:
-- os valores originais dos 24 carros;
-- como o motor e o câmbio funcionam;
-- o efeito esperado ao mudar cada valor.
+Este guia mostra **todos os números que definem cada carro** do jogo, de forma simples. Ele foi feito para responder a três perguntas:
+- Qual é a diferença entre os carros?
+- O que acontece se eu mudar um número?
+- Como funcionam o motor e as marchas?
 
-Os números foram lidos do registro de cada carro na ROM (`DD64_DUMPCARS`) e o câmbio foi confirmado com log de corrida (`DD64_GEARLOG`). Nada aqui altera o jogo: o modo Play Fidelity usa os valores originais.
+Os valores são os **originais do jogo**, lidos direto da ROM. Nada aqui muda o jogo: o modo Play Fidelity continua igual ao original.
 
-## Onde ficam
+## Resumo em 30 segundos
+
+- O jogo tem **24 carros**.
+- **Os 12 primeiros (os liberados no início) são iguais por dentro.** Só muda a aparência. Por isso a tela de seleção mostra as mesmas barras para todos eles. Isso não é bug.
+- Os carros **13 a 24** (os desbloqueáveis) têm números próprios.
+- O carro troca de marcha sozinho, de verdade, da 1ª até a 5ª, e chega à velocidade máxima em 5ª (uns 216 km/h nos carros 1 a 12).
+- O **som** do motor tem um câmbio separado, que não muda a força do carro.
+
+## Glossário (em palavras simples)
+
+| Termo | O que é |
+|---|---|
+| **Massa** | O peso do carro em kg. Mais pesado = arranca e freia pior, mas empurra mais os outros nas batidas. |
+| **Torque** | A força do motor. "Na arrancada" é a força parado; "máximo" é o pico (a 3500 rpm). |
+| **rpm** | Rotações do motor por minuto. Nos carros deste jogo vai de 750 até 6500. |
+| **Relação de marcha** | Quanto a marcha multiplica a força. 1ª tem número alto (muita força, pouca velocidade); 5ª tem número baixo (pouca força, muita velocidade). |
+| **Relação final** | Um multiplicador que vale para todas as marchas. |
+| **Tração** | A aderência dos pneus. Mais tração = segura mais nas curvas e patina menos. |
+| **Freio-motor** | O quanto o carro perde velocidade quando você solta o acelerador. |
+| **Fora da pista** | A aderência na terra e na grama. |
+| **Resposta da direção** | A rapidez com que o volante vira. |
+| **Defesa / ataque** | Para cada lado do carro: defesa alta sofre menos dano; ataque alto causa mais dano no carro em que bate. |
+| **Golpes** | Quantas batidas uma parte do carro aguenta até ficar destruída. |
+
+## As tabelas
+
+Na primeira linha de cada tabela, **"1 a 12"** vale para todos os carros iniciais, porque eles são iguais.
+
+### 1. Motor e peso
+
+O que faz o carro **acelerar**. A coluna "força por peso" é o torque máximo dividido pela massa (× 1000): quanto maior, mais o carro arranca.
+
+| Carro | Massa (kg) | Torque na arrancada | Torque máximo | Força por peso |
+|---|---|---|---|---|
+| **1 a 12** (todos iguais) | 910 | 165 | 170 | 187 |
+| **13** | 600 | 190 | 265 | 442 |
+| **14** | 1130 | 300 | 500 | 442 |
+| **15** | 1350 | 200 | 220 | 163 |
+| **16** | 1000 | 170 | 180 | 180 |
+| **17** | 1490 | 195 | 230 | 154 |
+| **18** | 910 | 255 | 455 | 500 |
+| **19** | 1060 | 185 | 225 | 212 |
+| **20** | 1000 | 325 | 415 | 415 |
+| **21** | 2000 | 215 | 330 | 165 |
+| **22** | 1100 | 70 | 135 | 123 |
+| **23** | 980 | 215 | 350 | 357 |
+| **24** | 1000 | 305 | 335 | 335 |
+
+### 2. Câmbio
+
+As **relações** de cada marcha (quanto a marcha multiplica a força) e a **relação final** (multiplica todas). Números maiores dão mais arrancada e menos velocidade naquela marcha. "Vel. máx." é a velocidade em que o som chega à última marcha, que no teste coincidiu com a velocidade final do carro.
+
+| Carro | Ré | 1ª | 2ª | 3ª | 4ª | 5ª | Final | Vel. máx. (mph) |
+|---|---|---|---|---|---|---|---|---|
+| **1 a 12** (todos iguais) | -3.8 | 12 | 10.5 | 9 | 7 | 2.5 | 1.9 | 135 |
+| **13** | -3.8 | 10.5 | 8.7 | 7 | 3.5 | 2.6 | 2.1 | 110 |
+| **14** | -3.8 | 11.8 | 9.3 | 8 | 6.6 | 2.9 | 1.7 | 135 |
+| **15** | -7.8 | 12 | 10.5 | 8 | 5.5 | 3 | 1.8 | 135 |
+| **16** | -3.8 | 11.5 | 9.6 | 8.1 | 6.1 | 2.5 | 2 | 110 |
+| **17** | -3.8 | 11.8 | 9.9 | 8.2 | 6.3 | 2.8 | 1.9 | 135 |
+| **18** | -6.1 | 16.4 | 10.4 | 7.7 | 5.5 | 2.7 | 1.8 | 115 |
+| **19** | -3.8 | 10.1 | 9 | 7.7 | 6 | 2.6 | 1.6 | 135 |
+| **20** | -3.8 | 17.4 | 12 | 10.4 | 8 | 3.1 | 1.45 | 155 |
+| **21** | -7.8 | 15.5 | 12 | 9.9 | 7.7 | 3.5 | 1.8 | 150 |
+| **22** | -9.3 | 13.5 | 11.5 | 9 | 7 | 2.5 | 1.9 | 110 |
+| **23** | -3.8 | 12 | 10.5 | 9 | 7 | 2.5 | 1.9 | 135 |
+| **24** | -3.8 | 11.1 | 9.6 | 8.1 | 6 | 2.5 | 1.8 | 135 |
+
+### 3. Pilotagem
+
+O que faz o carro **fazer curva e parar**. Valores maiores = mais forte. O volante "lento" é o ângulo das rodas parado e o "rápido" a 100 km/h.
+
+| Carro | Tração | Freio | Freio-motor | Fora da pista | Resposta da direção | Volante lento | Volante rápido |
+|---|---|---|---|---|---|---|---|
+| **1 a 12** (todos iguais) | 1 | 2 | 1.6 | 0.9 | 2.1 | 65 | 8 ou 7 |
+| **13** | 1.7 | 1.7 | 1.6 | 3 | 0.9 | 50 | 7 |
+| **14** | 1 | 2 | 2 | 1 | 1.1 | 50 | 7 |
+| **15** | 0.75 | 1.4 | 1.3 | 0.9 | 0.7 | 45 | 6 |
+| **16** | 1 | 1.2 | 1.2 | 1.7 | 0.8 | 45 | 8 |
+| **17** | 1 | 1.4 | 0.8 | 0.6 | 0.5 | 60 | 7 |
+| **18** | 1 | 2 | 1.6 | 0.9 | 0.9 | 50 | 6 |
+| **19** | 1 | 2 | 1 | 1.8 | 0.76 | 55 | 6.5 |
+| **20** | 1 | 2 | 3 | 1 | 1.3 | 45 | 7 |
+| **21** | 1.2 | 1 | 2 | 3 | 0.6 | 50 | 6 |
+| **22** | 1 | 0.5 | 0.9 | 1.2 | 0.9 | 60 | 6 |
+| **23** | 1 | 1.7 | 1.9 | 0.9 | 0.6 | 45 | 7 |
+| **24** | 1 | 3 | 2 | 1 | 1.2 | 45 | 6 |
+
+### 4. Suspensão e tamanho
+
+Como o carro **balança e ocupa espaço** nas batidas. O tamanho é a metade do comprimento × altura × largura, em metros.
+
+| Carro | Mola (rigidez) | Amortecedor | Altura | Tamanho |
+|---|---|---|---|---|
+| **1 a 12** (todos iguais) | 41000 | 0.65 | 0.44 | 2.61 × 0.91 × 1.11 |
+| **13** | 17000 | 0.45 | 0.52 | 2.5 × 0.65 × 1.2 |
+| **14** | 51000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+| **15** | 40000 | 0.45 | 0.58 | 2.5 × 0.65 × 1.05 |
+| **16** | 45000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+| **17** | 45000 | 0.45 | 0.5 | 2.5 × 0.65 × 1.05 |
+| **18** | 41000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+| **19** | 50000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+| **20** | 45000 | 0.65 | 0.44 | 2.61 × 0.91 × 1.11 |
+| **21** | 90000 | 0.65 | 0.44 | 3 × 0.65 × 1.2 |
+| **22** | 50000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+| **23** | 44000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+| **24** | 45000 | 0.65 | 0.44 | 2.5 × 0.65 × 1.05 |
+
+### 5. Vida e dano
+
+Cada lado do carro tem **defesa / ataque** (0 a 99): defesa alta sofre menos dano, ataque alto causa mais dano no outro. O lado direito e o esquerdo são iguais em todos os carros. "Golpes" é quantas batidas cada zona aguenta (frente / lado / traseira).
+
+| Carro | Vida total | Frente | Dianteira lateral | Lateral | Traseira lateral | Traseira | Golpes |
+|---|---|---|---|---|---|---|---|
+| **1 a 12** (todos iguais) | 130 | 15 / 75 | 20 / 75 | 70 / 35 | 80 / 65 | 65 / 70 | 3 / 3 / 3 |
+| **13** | 100 | 50 / 45 | 45 / 45 | 50 / 50 | 50 / 55 | 45 / 55 | 3 / 3 / 3 |
+| **14** | 140 | 50 / 75 | 50 / 75 | 40 / 55 | 50 / 55 | 50 / 55 | 3 / 3 / 3 |
+| **15** | 120 | 20 / 20 | 20 / 20 | 90 / 85 | 80 / 85 | 90 / 95 | 3 / 3 / 3 |
+| **16** | 140 | 70 / 75 | 70 / 75 | 75 / 60 | 80 / 85 | 80 / 85 | 3 / 3 / 3 |
+| **17** | 125 | 90 / 90 | 85 / 85 | 35 / 40 | 20 / 30 | 20 / 30 | 12 / 10 / 12 |
+| **18** | 140 | 35 / 70 | 35 / 70 | 45 / 65 | 45 / 65 | 45 / 65 | 3 / 3 / 3 |
+| **19** | 100 | 30 / 70 | 30 / 65 | 75 / 65 | 80 / 65 | 80 / 75 | 3 / 3 / 3 |
+| **20** | 130 | 75 / 75 | 80 / 70 | 75 / 65 | 85 / 65 | 80 / 70 | 3 / 3 / 3 |
+| **21** | 100 | 99 / 99 | 99 / 99 | 99 / 99 | 99 / 99 | 99 / 99 | 2 / 2 / 2 |
+| **22** | 150 | 80 / 35 | 80 / 35 | 80 / 35 | 80 / 35 | 80 / 35 | 3 / 3 / 3 |
+| **23** | 140 | 25 / 85 | 25 / 85 | 75 / 35 | 80 / 65 | 80 / 70 | 12 / 10 / 12 |
+| **24** | 140 | 80 / 80 | 70 / 75 | 10 / 15 | 40 / 50 | 50 / 60 | 3 / 2 / 3 |
+
+### 6. Barras da tela de seleção
+
+O que o jogo mostra (0 a 19). Vem de uma tabela fixa no código, que não é calculada dos números acima.
+
+| Carro | Velocidade | Aceleração | Controle | Durabilidade |
+|---|---|---|---|---|
+| **1 a 12** (todos iguais) | 14 | 9 | 19 | 11 |
+| **13** | 8 | 18 | 15 | 9 |
+| **14** | 12 | 17 | 17 | 8 |
+| **15** | 9 | 8 | 9 | 14 |
+| **16** | 11 | 9 | 12 | 15 |
+| **17** | 10 | 7 | 5 | 13 |
+| **18** | 13 | 19 | 13 | 7 |
+| **19** | 19 | 11 | 11 | 10 |
+| **20** | 17 | 16 | 18 | 16 |
+| **21** | 4 | 5 | 7 | 19 |
+| **22** | 13 | 3 | 14 | 17 |
+| **23** | 14 | 15 | 10 | 6 |
+| **24** | 16 | 14 | 16 | 12 |
+
+## Como as marchas funcionam
+
+O carro tem **dois câmbios** separados.
+
+### O câmbio de verdade (o que move o carro)
+
+1. O jogo mede a velocidade da roda e calcula o rpm do motor na marcha atual.
+2. Se o rpm passa de **85% do máximo** (cerca de 5500), sobe uma marcha. Se cai abaixo de **25%** (cerca de 1600), desce uma.
+3. A força que empurra o carro é **a força do motor naquele rpm × a relação da marcha × a relação final**. Por isso a força cai a cada troca.
+
+Foi isso que o teste com o carro 1 e o acelerador no fundo mostrou:
+
+| O que aconteceu | Velocidade |
+|---|---|
+| Passou para a 2ª | ~25 km/h (fica alternando entre 1ª e 2ª enquanto a roda patina) |
+| Passou para a 3ª | ~45 km/h |
+| Passou para a 4ª | ~52 km/h |
+| Passou para a 5ª | ~67 km/h (as quatro trocas em pouco mais de 1 segundo) |
+| Velocidade máxima, em 5ª | ~216 km/h (134 mph), com o motor quase no limite (6414 de 6500 rpm) |
+
+Repare que a 4ª tem relação 7 e a 5ª tem 2,5. Por isso o carro chega rápido à 5ª e passa quase a corrida toda nela.
+
+### O câmbio do som (o que você ouve)
+
+O som do motor troca de marcha conforme a velocidade: em **30, 60, 90 e 115 mph**. Cada troca baixa o rpm do som em uns 800, sem tirar força do carro. É por isso que a troca quase não se ouve.
+
+## Se eu mudar este número, o que acontece?
+
+| Se eu aumentar... | O carro... |
+|---|---|
+| Torque (na arrancada ou máximo) | Acelera mais forte, em todas as marchas. |
+| Massa | Acelera e freia pior, mas empurra mais os outros nas batidas e é menos empurrado. |
+| Relações das marchas | Ganha força naquela marcha, mas chega antes ao limite dela (troca mais cedo). |
+| Relação final | Arranca melhor e perde velocidade máxima. |
+| rpm máximo (6500) | Estica as marchas e ganha velocidade máxima. |
+| Tração | Segura mais nas curvas e patina menos na arrancada. |
+| Freio | Para em menos espaço. Se for exagerado, as rodas travam. |
+| Freio-motor | Perde velocidade mais rápido quando você solta o acelerador. |
+| Resposta da direção | Vira mais rápido. Se for exagerado, fica nervoso. |
+| Volante lento / rápido | Vira mais fechado em baixa / alta velocidade. |
+| Mola / amortecedor | Balança e quica menos. |
+| Vida total | Aguenta mais até ser destruído. |
+| Defesa de um lado | Sofre menos dano naquele lado. |
+| Ataque de um lado | Causa mais dano quando bate com aquele lado. |
+| Golpes de uma zona | Aquela parte aguenta mais batidas (os faróis do Wrecked Metal também quebram por elas). |
+
+**Os que mais pesam no desempenho:** torque e massa (aceleração), rpm máximo com a relação da 5ª e a final (velocidade máxima), tração e direção (controle), e vida, defesa e golpes (durabilidade).
+
+## Para programadores: onde cada número fica
 
 | O quê | Onde |
 |---|---|
-| Registro de cada carro | Recurso `D_80091AB4[carro]` (1000, 1100, 1200 ... 3300; um por carro, de 0 a 23), com 0x2B0 bytes (`CarStats`, `include/car.h`) |
-| Cópia no carro em corrida | `Car_Create` (`src/auto/1E308.c`) copia o registro para `Car+0xBEC` e passa o bloco a partir de `mass` para `RigidBody_Init` |
-| Curva de torque e câmbio | `Car+0x194` (cópia do registro a partir de +0x20; `Spline_ComputeCoeffs`) |
+| Registro de cada carro | Recurso `D_80091AB4[carro]` (1000, 1100 ... 3300), com 0x2B0 bytes (`CarStats`, `include/car.h`) |
+| Cópia no carro em corrida | `Car_Create` (`src/auto/1E308.c`) copia o registro para `Car+0xBEC` |
+| Câmbio da física | `Car_SelectGear` (`src/auto/3A250.c`): marcha em `Car+0xA58`, rpm em `Car+0xA54` |
+| Força do motor | `Car_GetDriveTorque` (`src/auto/3A3FC.c`) |
+| Câmbio do som | `Car_UpdateEngineRpm` (`src/auto/3A558.c`): marcha em `Car+0xBA4`, rpm em `Car+0xBA8` |
+| Barras da seleção | `CarSelect_SetStatBars` (`src/auto/42D14.c`) |
+| Texto de pontos fortes | `D_8009694C` (`src/auto/42A44.c`) |
 | Leitor no port | `port/game/wm_cars.c`: `WM_CarRecord(id)` |
-| Barras da tela de seleção | `CarSelect_SetStatBars` (`src/auto/42D14.c`), uma tabela fixa no código, que não é calculada do registro |
-| Texto de pontos fortes e fracos | `D_8009694C[k]` (`src/auto/42A44.c`): `k = 0` para os carros 1-12, `k = carro - 11` para os outros |
 
-## Os 12 carros iniciais são iguais
+| Offset no registro | Campo |
+|---|---|
+| 0x004 | modelo (0-23) |
+| 0x008 | vida total |
+| 0x00C / 0x010 / 0x014 / 0x018 / 0x01C | tração / freio / freio-motor / fora da pista / resposta da direção |
+| 0x024 / 0x028 | rpm máximo / rpm de marcha lenta |
+| 0x02C / 0x030 / 0x034 | torque na arrancada / torque máximo / rpm do torque máximo |
+| 0x03C, 0x040-0x054 | nº de marchas (6), relações R e 1ª-5ª |
+| 0x058 | relação final |
+| 0x05C, 0x060-0x074 | nº de marchas do som (6), velocidades de troca do som em mph |
+| 0x078 | massa (o jogo limita a 500-2000) |
+| 0x084 | meia-caixa: comprimento, altura, largura |
+| 0x090 / 0x094 | volante lento / rápido |
+| 0x0B0 / 0x0B4 / 0x0B8 / 0x0BC / 0x0C0 | mola / amortecedor / altura / mola mínima / mola máxima |
+| 0x0C8-0x124 | posições das rodas |
+| 0x128 / 0x170 | lanternas traseiras / faróis dianteiros |
+| 0x1E8-0x2AC | 10 zonas de dano × 0x14: id, defesa, ataque, golpes, 0 (zonas: frente, dianteira dir., lateral dir., traseira dir., dianteira esq., lateral esq., traseira esq., traseira, 8 e 9 ainda não identificadas) |
 
-No jogo original, os carros 1 a 12 têm os mesmos valores de vida, massa, motor, câmbio, tração, freio, direção, suspensão e zonas de dano. Entre eles, só mudam:
-- o modelo;
-- a posição das rodas e dos faróis;
-- o tamanho da caixa de colisão;
-- o ângulo do volante em alta velocidade (8 nos carros ímpares, 7 nos pares);
-- dois números da zona 9 (nos carros 1 e 3).
-
-Por isso a tela de seleção mostra as mesmas barras (14/9/19/11) e o mesmo texto para os 12. Isso não é bug de exibição. Só os desbloqueáveis (13 a 24) têm números próprios.
-
-## Mapa do registro (CarStats, 0x2B0 bytes)
-
-| Offset | Campo | Valor nos carros 1-12 | O que faz | Efeito de aumentar |
-|---|---|---|---|---|
-| 0x004 | modelo | 0-23 | O número do carro (o modelo 3D e a tabela de recursos) | Nenhum na física |
-| 0x008 | vida total | 130 | A vida geral (0-200). `Car_Create` soma um extra conforme dificuldade e modo | Aguenta mais até ser destruído |
-| 0x00C | tração | 1.0 | Aderência dos pneus | Segura mais em curva e patina menos na arrancada |
-| 0x010 | freio | 2.0 | Força do freio | Para em menos espaço; demais trava as rodas |
-| 0x014 | freio-motor | 1.6 | Desaceleração ao soltar o acelerador | Perde velocidade mais rápido sem frear |
-| 0x018 | offroad | 0.9 | Aderência fora do asfalto | Perde menos na terra e na grama |
-| 0x01C | resposta da direção | 2.1 | Rapidez do volante (`Car+0xB90`) | Vira mais rápido; demais fica nervoso |
-| 0x024 | rpm máximo | 6500 | Limite do motor; o câmbio troca a 85% e a 25% dele | Marchas mais longas e velocidade final maior |
-| 0x028 | rpm de marcha lenta | 750 | rpm mínimo | Quase nada |
-| 0x02C | torque a 0 rpm | 165 | Início da curva de torque | Arrancada mais forte |
-| 0x030 | torque máximo | 170 | Pico da curva | Acelera mais em todas as marchas |
-| 0x034 | rpm do torque máximo | 3500 | Onde fica o pico | Muda em que rpm o carro "puxa" mais |
-| 0x03C | nº de marchas | 6 | R + 5 marchas | (não mexer) |
-| 0x040-0x054 | relações R, 1ª-5ª | -3.8, 12, 10.5, 9, 7, 2.5 | Multiplicam a força e o rpm em cada marcha | Mais força na marcha, mas chega antes ao limite dela |
-| 0x058 | relação final | 1.9 | Multiplica todas as marchas | Mais arrancada e menos velocidade final |
-| 0x05C | nº de marchas do som | 6 | | (não mexer) |
-| 0x060-0x074 | trocas do som (mph) | -80, 30, 60, 90, 115, 135 | Em que velocidade o **som** do motor troca de marcha. Não muda a força | Só o som |
-| 0x078 | massa | 910 | Massa em kg (o jogo limita a 500-2000) | Acelera e freia pior, mas empurra mais nas batidas |
-| 0x080 | escala | 0.01 | Escala do modelo | (não mexer) |
-| 0x084 | meia-caixa (comprimento, altura, largura) | 2.61, 0.91, 1.11 | Tamanho na colisão e inércia de rotação | Carro "maior" nas batidas e gira mais devagar |
-| 0x090 | ângulo do volante lento | 65 | Ângulo das rodas parado | Vira mais fechado em baixa velocidade |
-| 0x094 | ângulo do volante rápido | 8 / 7 | Ângulo a 100 km/h; entre os dois o jogo interpola numa curva | Vira mais em alta velocidade |
-| 0x0B0 | mola K | 41000 | Rigidez da suspensão | Balança menos |
-| 0x0B4 | amortecedor B | 0.65 | Amortecimento | Quica menos |
-| 0x0B8 | altura (equilibrium) | 0.44 | Altura de repouso | Mais alto |
-| 0x0BC / 0x0C0 | mola mín. / máx. | 0.18 / 0.46 | Curso da suspensão | |
-| 0x0C8-0x124 | rodas | | Posições das rodas | Visual e contato com o chão |
-| 0x128 / 0x170 | faróis | | Lanternas traseiras e faróis dianteiros | Visual (a luz dos faróis sai daqui) |
-| 0x1E8-0x2AC | zonas de dano (10 × 0x14) | veja a tabela | Copiadas para `Car+0xA68`: id, defesa, ataque, resistência, 0 | |
-
-Zonas, em ordem: frente, dianteira direita, lateral direita, traseira direita, dianteira esquerda, lateral esquerda, traseira esquerda, traseira, e as zonas 8 e 9 (ainda não identificadas).
-- **Defesa** (0-99) reduz o dano que a zona recebe.
-- **Ataque** (0-99) aumenta o dano que ela causa.
-- **Resistência** é quantos golpes a zona aguenta. Quando a resistência da frente e das dianteiras cai, os faróis falham e quebram (Wrecked Metal).
-
-## Motor e câmbio (confirmado com log)
-
-São dois câmbios independentes.
-
-**1. O câmbio da física.** É ele que move o carro (`Car_SelectGear`, `src/auto/3A250.c`).
-- **rpm:** velocidade da roda × relação da marcha × relação final.
-- **Trocas:** sobe acima de 85% do rpm máximo e desce abaixo de 25%, tudo automático. Não há embreagem nem tempo de troca.
-- **Força** (`Car_GetDriveTorque`): curva de torque(rpm) × relação da marcha × relação final × 0.85. A força cai a cada troca.
-- **Onde fica:** `Car+0xA58` guarda a marcha (0 = ré, 1 a 5) e `Car+0xA54` o rpm.
-
-Log do carro 1 com o acelerador no fundo (`DD64_GEARLOG`):
-
-| Momento | Marcha | Velocidade |
-|---|---|---|
-| Troca 1ª → 2ª | 2 | ~25 km/h (fica alternando 1ª↔2ª enquanto a roda patina) |
-| Troca → 3ª | 3 | ~45 km/h |
-| Troca → 4ª | 4 | ~52 km/h |
-| Troca → 5ª | 5 | ~67 km/h (todas as trocas em ~1 segundo) |
-| Velocidade final | 5 | ~216 km/h (134.5 mph), com rpm 6414 de 6500 |
-
-Como a 5ª tem relação 2.5 e a 4ª tem 7, o carro passa quase toda a corrida em 5ª, e a força cai para cerca de um terço nessa troca.
-
-**2. O câmbio do som.** É o que a gente ouve (`Car_UpdateEngineRpm`, `src/auto/3A558.c`).
-- **Velocidade:** a do carro em mph (m/s × 2.235).
-- **Marcha:** sai da tabela 0x060, com trocas em 30, 60, 90 e 115 mph.
-- **rpm do som:** 1000 até 30 mph. Depois começa em 2500 + 400 por marcha e sobe até 70% do rpm máximo, com teto de 80%.
-- **Onde fica:** `Car+0xBA4` guarda a marcha do som e `Car+0xBA8` o rpm.
-
-No log, cada troca do som é uma queda de cerca de 800 rpm (4489 → 3702 na troca para a 5ª do som). A queda é pequena e não vem com nenhum corte de aceleração, por isso quase não se ouve. Há também um caso especial: com acelerador e duas ou mais rodas fora do chão, o rpm do som só sobe (+200 por frame) até o máximo.
-
-## Valores originais dos 24 carros
-
-A coluna "1-12" vale para todos os carros iniciais. Na linha "Som: troca em (mph)", são as velocidades em que o som troca de marcha.
-
-Os números são os da ROM. A coluna "1-12" vale para todos os carros liberados de início.
-
-| Campo | 1-12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Vida total (health) | 130 | 100 | 140 | 120 | 140 | 125 | 140 | 100 | 130 | 100 | 150 | 140 | 140 |
-| Massa (kg) | 910 | 600 | 1130 | 1350 | 1000 | 1490 | 910 | 1060 | 1000 | 2000 | 1100 | 980 | 1000 |
-| Torque a 0 rpm | 165 | 190 | 300 | 200 | 170 | 195 | 255 | 185 | 325 | 215 | 70 | 215 | 305 |
-| Torque máximo | 170 | 265 | 500 | 220 | 180 | 230 | 455 | 225 | 415 | 330 | 135 | 350 | 335 |
-| Torque/massa ×1000 | 186.813 | 441.667 | 442.478 | 162.963 | 180 | 154.362 | 500 | 212.264 | 415 | 165 | 122.727 | 357.143 | 335 |
-| Relação R | -3.8 | -3.8 | -3.8 | -7.8 | -3.8 | -3.8 | -6.1 | -3.8 | -3.8 | -7.8 | -9.3 | -3.8 | -3.8 |
-| Relação 1ª | 12 | 10.5 | 11.8 | 12 | 11.5 | 11.8 | 16.4 | 10.1 | 17.4 | 15.5 | 13.5 | 12 | 11.1 |
-| Relação 2ª | 10.5 | 8.7 | 9.3 | 10.5 | 9.6 | 9.9 | 10.4 | 9 | 12 | 12 | 11.5 | 10.5 | 9.6 |
-| Relação 3ª | 9 | 7 | 8 | 8 | 8.1 | 8.2 | 7.7 | 7.7 | 10.4 | 9.9 | 9 | 9 | 8.1 |
-| Relação 4ª | 7 | 3.5 | 6.6 | 5.5 | 6.1 | 6.3 | 5.5 | 6 | 8 | 7.7 | 7 | 7 | 6 |
-| Relação 5ª | 2.5 | 2.6 | 2.9 | 3 | 2.5 | 2.8 | 2.7 | 2.6 | 3.1 | 3.5 | 2.5 | 2.5 | 2.5 |
-| Relação final | 1.9 | 2.1 | 1.7 | 1.8 | 2 | 1.9 | 1.8 | 1.6 | 1.45 | 1.8 | 1.9 | 1.9 | 1.8 |
-| Som: troca em (mph) 1ª | 30 | 30 | 30 | 30 | 30 | 30 | 25 | 30 | 30 | 25 | 25 | 30 | 30 |
-| Som: troca em (mph) 2ª | 60 | 50 | 60 | 60 | 50 | 60 | 40 | 60 | 70 | 50 | 40 | 60 | 60 |
-| Som: troca em (mph) 3ª | 90 | 70 | 90 | 90 | 70 | 90 | 60 | 90 | 100 | 80 | 65 | 90 | 90 |
-| Som: troca em (mph) 4ª | 115 | 90 | 115 | 115 | 90 | 115 | 95 | 115 | 130 | 110 | 90 | 115 | 115 |
-| Som: troca em (mph) 5ª (máx.) | 135 | 110 | 135 | 135 | 110 | 135 | 115 | 135 | 155 | 150 | 110 | 135 | 135 |
-| Tração (traction) | 1 | 1.7 | 1 | 0.75 | 1 | 1 | 1 | 1 | 1 | 1.2 | 1 | 1 | 1 |
-| Freio (braking) | 2 | 1.7 | 2 | 1.4 | 1.2 | 1.4 | 2 | 2 | 2 | 1 | 0.5 | 1.7 | 3 |
-| Freio-motor | 1.6 | 1.6 | 2 | 1.3 | 1.2 | 0.8 | 1.6 | 1 | 3 | 2 | 0.9 | 1.9 | 2 |
-| Fora da pista (offroad) | 0.9 | 3 | 1 | 0.9 | 1.7 | 0.6 | 0.9 | 1.8 | 1 | 3 | 1.2 | 0.9 | 1 |
-| Resposta da direção | 2.1 | 0.9 | 1.1 | 0.7 | 0.8 | 0.5 | 0.9 | 0.76 | 1.3 | 0.6 | 0.9 | 0.6 | 1.2 |
-| Ângulo volante lento | 65 | 50 | 50 | 45 | 45 | 60 | 50 | 55 | 45 | 50 | 60 | 45 | 45 |
-| Ângulo volante rápido | 8 / 7 | 7 | 7 | 6 | 8 | 7 | 6 | 6.5 | 7 | 6 | 6 | 7 | 6 |
-| Mola K | 41000 | 17000 | 51000 | 40000 | 45000 | 45000 | 41000 | 50000 | 45000 | 90000 | 50000 | 44000 | 45000 |
-| Amortecedor B | 0.65 | 0.45 | 0.65 | 0.45 | 0.65 | 0.45 | 0.65 | 0.65 | 0.65 | 0.65 | 0.65 | 0.65 | 0.65 |
-| Altura (equilibrium) | 0.44 | 0.52 | 0.44 | 0.58 | 0.44 | 0.5 | 0.44 | 0.44 | 0.44 | 0.44 | 0.44 | 0.44 | 0.44 |
-| Mola máx. | 0.46 | 0.52 | 0.46 | 0.58 | 0.46 | 0.5 | 0.46 | 0.46 | 0.46 | 0.46 | 0.46 | 0.46 | 0.46 |
-| Meio-comprimento × altura × largura | 2.61×0.91×1.11 | 2.5×0.65×1.2 | 2.5×0.65×1.05 | 2.5×0.65×1.05 | 2.5×0.65×1.05 | 2.5×0.65×1.05 | 2.5×0.65×1.05 | 2.5×0.65×1.05 | 2.61×0.91×1.11 | 3×0.65×1.2 | 2.5×0.65×1.05 | 2.5×0.65×1.05 | 2.5×0.65×1.05 |
-| Barras: vel/acel/contr/dur | 14/9/19/11 | 8/18/15/9 | 12/17/17/8 | 9/8/9/14 | 11/9/12/15 | 10/7/5/13 | 13/19/13/7 | 19/11/11/10 | 17/16/18/16 | 4/5/7/19 | 13/3/14/17 | 14/15/10/6 | 16/14/16/12 |
-
-### Zonas de dano
-
-Cada célula traz três valores: **defesa / ataque / resistência**.
-
-- **Defesa** (0-99): quanto a zona segura o dano que recebe.
-- **Ataque** (0-99): quanto dano ela causa ao bater em outro carro.
-- **Resistência**: quantos golpes a zona aguenta até ficar destruída. É também ela que quebra os faróis.
-
-As zonas 8 e 9 existem no registro, mas ainda não descobri a que parte do carro correspondem.
-
-| Zona (defesa/ataque/resistência) | 1-12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Frente | 15/75/3 | 50/45/3 | 50/75/3 | 20/20/3 | 70/75/3 | 90/90/12 | 35/70/3 | 30/70/3 | 75/75/3 | 99/99/2 | 80/35/3 | 25/85/12 | 80/80/3 |
-| Dianteira dir. | 20/75/3 | 45/45/3 | 50/75/3 | 20/20/3 | 70/75/3 | 85/85/10 | 35/70/3 | 30/65/3 | 80/70/3 | 99/99/2 | 80/35/3 | 25/85/10 | 70/75/3 |
-| Lateral dir. | 70/35/3 | 50/50/3 | 40/55/3 | 90/85/3 | 75/60/3 | 35/40/10 | 45/65/3 | 75/65/3 | 75/65/3 | 99/99/2 | 80/35/3 | 75/35/10 | 10/15/2 |
-| Traseira dir. | 80/65/3 | 50/55/3 | 50/55/3 | 80/85/3 | 80/85/3 | 20/30/10 | 45/65/3 | 80/65/3 | 85/65/3 | 99/99/2 | 80/35/3 | 80/65/10 | 40/50/3 |
-| Dianteira esq. | 20/75/3 | 45/45/3 | 50/75/3 | 20/20/3 | 70/75/3 | 85/85/10 | 35/70/3 | 30/65/3 | 80/70/3 | 99/99/2 | 80/35/3 | 25/85/10 | 70/75/3 |
-| Lateral esq. | 70/35/3 | 50/50/3 | 40/55/3 | 90/85/3 | 75/60/3 | 35/40/10 | 45/65/3 | 75/65/3 | 75/65/3 | 99/99/2 | 80/35/3 | 75/35/10 | 10/15/2 |
-| Traseira esq. | 80/65/3 | 50/55/3 | 50/55/3 | 80/85/3 | 80/85/3 | 20/30/10 | 45/65/3 | 80/65/3 | 85/65/3 | 99/99/2 | 80/35/3 | 80/65/10 | 40/50/3 |
-| Traseira | 65/70/3 | 45/55/3 | 50/55/3 | 90/95/3 | 80/85/3 | 20/30/12 | 45/65/3 | 80/75/3 | 80/70/3 | 99/99/2 | 80/35/3 | 80/70/12 | 50/60/3 |
-| Zona 8 | 50/50/5 | 40/50/5 | 40/45/5 | 30/30/5 | 50/50/4 | 45/50/20 | 45/65/5 | 50/60/5 | 50/50/5 | 99/99/5 | 50/40/5 | 50/50/20 | 30/50/5 |
-| Zona 9 | 5/99/5 | 50/50/5 | 40/90/5 | 30/30/5 | 5/99/4 | 15/90/20 | 5/99/5 | 5/99/5 | 45/75/5 | 50/99/5 | 35/40/5 | 5/99/20 | 55/90/5 |
-
-## Ferramentas de teste (PC, só com a variável ligada)
+## Ferramentas de teste (PC, só ligam com a variável)
 
 | Variável | O que faz |
 |---|---|
-| `DD64_DUMPCARS=arquivo` | Grava o registro inteiro dos 24 carros, palavra por palavra (hex, inteiro e float) |
-| `DD64_GEARLOG=1` | Registra no log, para o carro do jogador, a marcha e o rpm da física, a marcha e o rpm do som e a velocidade, a cada troca e a cada 15 frames |
+| `DD64_DUMPCARS=arquivo` | Grava o registro inteiro dos 24 carros, número por número |
+| `DD64_GEARLOG=1` | Registra no log a marcha, o rpm e a velocidade do carro do jogador, a cada troca |
