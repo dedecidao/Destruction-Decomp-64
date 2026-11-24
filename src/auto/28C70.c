@@ -1,5 +1,8 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+void WM_EmitSparks(void *, void *, float, float, float, float, void *);
+#endif
 
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { u8 pad0[0x10]; s8 x10; } PadInfo;
@@ -109,6 +112,9 @@ void Car_OnCollision2(Coll *a, Vec3f posA, Coll *b, Vec3f posB, f32 force)
         if (zoneA != 0 && zoneA != 7 && zoneA != 8 && zoneA != 9) {
             if (a->x16C == 8 || a->x16C == 5) {
                 Particles_EmitTrail(D_801245A4 + 0xC, posA, carB);
+#ifdef TARGET_PC
+                WM_EmitSparks(D_801245A4 + 0xC, carB, posA.x, posA.y, posA.z, force, NULL); /* the burst */
+#endif
             }
             flag = 0;
         } else {
@@ -154,6 +160,9 @@ void Car_OnCollision2(Coll *a, Vec3f posA, Coll *b, Vec3f posB, f32 force)
                 !(zoneB == 7 || zoneB == 8) && zoneB != 9) {
                 Debris_Spawn(carA, posA, hpA - carA->x10);
                 Debris_Spawn(carB, posB, hpB - carB->x10);
+#ifdef TARGET_PC
+                WM_EmitSparks(D_801245A4 + 0xC, carA, posA.x, posA.y, posA.z, force, carB); /* metal on metal */
+#endif
                 flag = 0;
             } else {
                 flag = 1;

@@ -1,5 +1,11 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
+void WM_HeadlightFade(void *car, void *dl);
+#endif
 
 typedef struct { u32 w0; u32 w1; } Gfx;
 typedef struct { void *ptr; u32 size; } HeapBlock;
@@ -30,14 +36,25 @@ Gfx *func_8000A894(Obj *o, Gfx *g) {
         GFX2(g++, 0xDA380000, o->x9C);
         dl = HeapBlock_Ptr(&o->xB3C);
         GFX2(g++, 0xDE000000, dl);
+#ifdef TARGET_PC
+    } else if (WM_NightCarLights(D_800958B4)) {
+#else
     } else if (D_800958B4 == 2 || D_800958B4 == 11) {
+#endif
         pushed = 1;
         GFX2(g++, 0xDA380000, o->x9C);
         dl = HeapBlock_Ptr(&o->xB44);
         GFX2(g++, 0xDE000000, dl);
     }
+#ifdef TARGET_PC
+    if (WM_NightCarLights(D_800958B4)) {
+#else
     if (D_800958B4 == 2 || D_800958B4 == 11) {
+#endif
         dl = HeapBlock_Ptr(&o->xB4C);
+#ifdef TARGET_PC
+        WM_HeadlightFade(o, dl); /* the light on the road fades on a tilted or flying car */
+#endif
         GFX2(g++, 0xDE000000, dl);
     }
     if (pushed) {

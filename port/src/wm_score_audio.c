@@ -21,6 +21,31 @@ static SDL_AudioStream *sOut;
 static s16 sPcm[SCORE_MAX_SAMPLES];
 static Uint64 sLastTickMs;
 
+/* The score sounds are made on the game thread when a hit lands or the counter ticks
+   (every frame while it drains): a table sine instead of sinf, 4096 points with linear
+   steps between them (about -90 dB of error), so a tick costs a few microseconds */
+#define WM_SIN_N 4096
+static float sSinTab[WM_SIN_N + 1];
+
+static float wmSin(float ph) {
+    float x;
+    int i;
+
+    if (sSinTab[WM_SIN_N / 4] == 0.0f) {
+        for (i = 0; i <= WM_SIN_N; i++) {
+            sSinTab[i] = sinf((float)i * TWO_PI / WM_SIN_N);
+        }
+    }
+    x = ph * (WM_SIN_N / TWO_PI);
+    x -= (float)WM_SIN_N * floorf(x / (float)WM_SIN_N);
+    i = (int)x;
+    if (i >= WM_SIN_N) {
+        i = 0;
+        x = 0.0f;
+    }
+    return sSinTab[i] + (sSinTab[i + 1] - sSinTab[i]) * (x - (float)i);
+}
+
 static float saturateDrive(float x, float drive) {
     float d = x * drive;
     float ax = d < 0.0f ? -d : d;
@@ -118,7 +143,7 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
             float f = 784.0f + 392.0f * (t < 0.35f ? t / 0.35f : 1.0f);
             float atk = i < 24 ? (float)i / 24.0f : 1.0f;
             float click = i < 40 ? (1.0f - (float)i / 40.0f) * 0.35f : 0.0f;
-            float s = (sinf(ph1) * 0.65f + sinf(ph2) * 0.30f + sinf(ph3) * 0.15f) * env * atk + click;
+            float s = (wmSin(ph1) * 0.65f + wmSin(ph2) * 0.30f + wmSin(ph3) * 0.15f) * env * atk + click;
             ph1 += TWO_PI * f / SCORE_RATE;
             ph2 += TWO_PI * (f * 2.0f) / SCORE_RATE;
             ph3 += TWO_PI * (f * 3.0f) / SCORE_RATE;
@@ -134,8 +159,8 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
         for (i = 0; i < n; i++) {
             float atk = i < 24 ? (float)i / 24.0f : 1.0f;
             float fSub = 145.0f - 85.0f * ((float)i / (float)n);
-            float chord = (sinf(ph1) * 0.45f + sinf(ph2) * 0.35f + sinf(ph3) * 0.30f) * env;
-            float s = (sinf(phSub) * subEnv * 0.55f + chord) * atk;
+            float chord = (wmSin(ph1) * 0.45f + wmSin(ph2) * 0.35f + wmSin(ph3) * 0.30f) * env;
+            float s = (wmSin(phSub) * subEnv * 0.55f + chord) * atk;
             phSub += TWO_PI * fSub / SCORE_RATE;
             ph1 += TWO_PI * 523.25f / SCORE_RATE;  /* C5 */
             ph2 += TWO_PI * 783.99f / SCORE_RATE;  /* G5 */
@@ -165,8 +190,8 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
                 prevStep = step;
             }
             fNote = kNotes4[step];
-            s = sinf(phSub) * subEnv * 0.65f +
-                (sinf(phNote) * 0.60f + sinf(phHarm) * 0.35f + sinf(phOct) * 0.20f) * noteEnv * 0.65f;
+            s = wmSin(phSub) * subEnv * 0.65f +
+                (wmSin(phNote) * 0.60f + wmSin(phHarm) * 0.35f + wmSin(phOct) * 0.20f) * noteEnv * 0.65f;
             phSub += TWO_PI * fSub / SCORE_RATE;
             phNote += TWO_PI * fNote / SCORE_RATE;
             phHarm += TWO_PI * (fNote * 2.0f) / SCORE_RATE;
@@ -196,8 +221,8 @@ void WM_ScoreAudioHit(int added, int pendingTotal) {
                 prevStep = step;
             }
             fNote = kNotes5[step];
-            s = sinf(phSub) * subEnv * 0.72f +
-                (sinf(phNote) * 0.58f + sinf(phHarm) * 0.36f + sinf(phOct) * 0.24f) * noteEnv * 0.72f;
+            s = wmSin(phSub) * subEnv * 0.72f +
+                (wmSin(phNote) * 0.58f + wmSin(phHarm) * 0.36f + wmSin(phOct) * 0.24f) * noteEnv * 0.72f;
             phSub += TWO_PI * fSub / SCORE_RATE;
             phNote += TWO_PI * fNote / SCORE_RATE;
             phHarm += TWO_PI * (fNote * 2.0f) / SCORE_RATE;
@@ -243,7 +268,7 @@ void WM_ScoreAudioTick(int remaining, int peak) {
     for (i = 0; i < n; i++) {
         float atk = i < 16 ? (float)i / 16.0f : 1.0f;
         float click = i < 24 ? (1.0f - (float)i / 24.0f) * 0.25f : 0.0f;
-        float s = (sinf(ph1) * 0.62f + sinf(ph2) * 0.28f + sinf(ph3) * 0.16f) * env * atk + click;
+        float s = (wmSin(ph1) * 0.62f + wmSin(ph2) * 0.28f + wmSin(ph3) * 0.16f) * env * atk + click;
         ph1 += TWO_PI * freq / SCORE_RATE;
         ph2 += TWO_PI * (freq * 2.0f) / SCORE_RATE;
         ph3 += TWO_PI * (freq * 3.0f) / SCORE_RATE;
@@ -268,7 +293,7 @@ void WM_ScoreAudioBanked(int peak) {
     envK = expf(-1.0f / (SCORE_RATE * 0.060f));
     for (i = 0; i < n; i++) {
         float atk = i < 20 ? (float)i / 20.0f : 1.0f;
-        float s = (sinf(ph1) * 0.50f + sinf(ph2) * 0.35f + sinf(ph3) * 0.25f) * env * atk;
+        float s = (wmSin(ph1) * 0.50f + wmSin(ph2) * 0.35f + wmSin(ph3) * 0.25f) * env * atk;
         ph1 += TWO_PI * 1046.50f / SCORE_RATE; /* C6 */
         ph2 += TWO_PI * 1567.98f / SCORE_RATE; /* G6 */
         ph3 += TWO_PI * 2093.00f / SCORE_RATE; /* C7 */

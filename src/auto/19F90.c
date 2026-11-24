@@ -1,5 +1,10 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
+#endif
 
 typedef struct {
     u8 op;
@@ -88,7 +93,11 @@ void Track_RelocateDisplayList(Obj *arg0, Script *arg1, s32 arg2) {
     arg0->x10C = 0;
     found = 0;
     foundIdx = 0;
+#ifdef TARGET_PC
+    if (WM_NightGroundLight(D_800958B4[0])) {
+#else
     if (D_800958B4[0] == 2 || D_800958B4[0] == 11) {
+#endif
         Grid_Create(&arg0->x10C, 0x6590, 100, 100);
         for (i = 0; i < arg0->x110->x10; i++) {
             Grid_AddItem(arg0->x10C, i);

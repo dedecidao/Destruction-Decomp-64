@@ -5,6 +5,14 @@
  */
 #include "common.h"
 #include "wm_mod.h"
+void Port_Log(const char *, ...);
+#include <string.h>
+#include <math.h>
+#include <stdint.h>
+
+char *getenv(const char *);
+int atoi(const char *);
+double atof(const char *);
 
 typedef struct { u32 w0; u32 w1; } WMGfx;
 typedef struct { f32 x, y, z; } Vec3f;
@@ -277,6 +285,9 @@ static void styleForSurface(s32 surface, s32 skidMode, const WMTuning *cfg, Surf
     }
 }
 
+/* Particles of the smoke pool the wheel dust leaves free for the hood smoke */
+#define WM_HOOD_RESERVE 40
+
 static void emitWheelSegment(WMParticleObj *obj, const Vec3f *from, const Vec3f *to,
                              const SurfaceDustStyle *st, f32 intensity, f32 stepDist,
                              f32 scaleMul, f32 lifeMul, f32 alphaMul, int maxSteps) {
@@ -285,7 +296,7 @@ static void emitWheelSegment(WMParticleObj *obj, const Vec3f *from, const Vec3f 
     f32 scale, growth;
     int life, alphaStep, maxAlpha, steps, emitted = 0;
 
-    if (obj->count >= obj->maxCount) {
+    if (obj->count >= obj->maxCount - WM_HOOD_RESERVE) {
         return;
     }
 
@@ -322,7 +333,7 @@ static void emitWheelSegment(WMParticleObj *obj, const Vec3f *from, const Vec3f 
     }
 
     p = *from;
-    for (emitted = 0; emitted < steps && obj->count < obj->maxCount; emitted++) {
+    for (emitted = 0; emitted < steps && obj->count < obj->maxCount - WM_HOOD_RESERVE; emitted++) {
         Vec3f spawnPos = p;
         WMParticle *pt;
 
@@ -483,27 +494,70 @@ int WM_EmitWheelDust(void *carPtr, void *a, void *b) {
     return 1;
 }
 
+/*
+ * Hood smoke by damage (Car_UpdateWreck, src/auto/1C624.c, every car every frame below
+ * WM_HoodSmokeStartHp). The N64 smokes only under 21 health, one particle a frame for
+ * every car. Here, by health (cars start between 110 and 200):
+ *   80..50   light: thin pale wisps
+ *   50..21   medium: grey-white, steadier
+ *   21..1    heavy: thick white, the N64's stage, more and more of it black and greyer
+ *            as the health nears 0 (one extra particle under 10)
+ *   0        black, before the car burns out
+ * The player's car smokes at the full rate; the other cars at half of it (every other
+ * frame per stage), which halves their particles. The wheel dust keeps WM_HOOD_RESERVE
+ * particles of the shared pool free for it, so a dusty race no longer starves it.
+ */
+static int wmIsHumanCar(void *carPtr);
+
+#define WM_HOOD_LIGHT 80
+#define WM_HOOD_MEDIUM 50
+#define WM_HOOD_HEAVY 21
+
+int WM_HoodSmokeStartHp(void) {
+    return WM_Enabled() ? WM_HOOD_LIGHT : WM_HOOD_HEAVY;
+}
+
 int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
+    static u8 sTick[32];
     WMCar *car = (WMCar *)carPtr;
     const Vec3f *pos = (const Vec3f *)posPtr;
     f32 (*m)[4] = (f32 (*)[4])mtxPtr;
     WMParticleObj *smokeObj;
     WMParticle *pt;
     Vec3f p, v, acc;
-    f32 spd, spdNorm, r1, r2, backPush, latVel;
-    s32 life;
+    f32 spd, spdNorm, r1, r2, backPush, latVel, scale, spread, rise;
+    s32 life, hp = car->health, every, maxAlpha, alphaStep;
+    u8 *tick;
+    int human;
 
     if (!WM_Enabled()) {
         return 0;
     }
-    if (D_8012455C || D_801245A4 == NULL) {
+    /* (not D_8012455C: this runs in the car update, where that is the last view drawn) */
+    if (D_801245A4 == NULL || hp >= WM_HOOD_LIGHT) {
         return 1;
     }
-
     smokeObj = (WMParticleObj *)(D_801245A4 + 0xB0);
     if (smokeObj->count >= smokeObj->maxCount) {
         return 1;
     }
+
+    human = wmIsHumanCar(carPtr);
+    if (hp <= 0 || hp < WM_HOOD_HEAVY) {
+        every = 1;
+    } else if (hp < WM_HOOD_MEDIUM) {
+        every = 3;
+    } else {
+        every = 6;
+    }
+    if (!human) {
+        every *= 2;
+    }
+    tick = &sTick[((u32)(uintptr_t)carPtr >> 4) & 31];
+    if (++*tick < every) {
+        return 1;
+    }
+    *tick = 0;
 
     spd = Car_GetSpeed(carPtr);
     if (spd < 0.0f) {
@@ -513,51 +567,68 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
     if (spdNorm > 1.0f) {
         spdNorm = 1.0f;
     }
-
     r1 = (f32)((rand() & 7) - 3);
     life = 9 - D_800D31CC;
     if (life < 4) {
         life = 4;
     }
 
-    if (car->health > 0) {
-        /* Stage 1 white hood smoke: flattens nearly horizontal at speed & spreads left/right */
-        r2 = randRange(10.5f);
+    {
+    int n = (hp > 0 && hp < 10) ? 2 : 1, k;
+    for (k = 0; k < n && smokeObj->count < smokeObj->maxCount; k++) {
+    /* under 21 health, a share of the particles black: none at 21, nearly all at 1 */
+    int black = hp <= 0 || (hp < WM_HOOD_HEAVY && (rand() % WM_HOOD_HEAVY) >= hp);
+    if (!black) {
+        /* white to grey, thicker and longer as the health drops; flattened at speed and
+           spread to the sides by the airflow */
+        f32 d = 1.0f - (f32)hp / (f32)WM_HOOD_LIGHT; /* 0 light .. ~1 heavy */
+        scale = 4.4f + 2.2f * d;
+        spread = 6.5f + 4.0f * d;
+        rise = 2.3f + 0.6f * d;
+        maxAlpha = 80 + (s32)(105.0f * d);
+        alphaStep = maxAlpha / 4;
+        life += (s32)(2.0f * d);
+
+        r2 = randRange(spread);
         p.x = pos->x + m[0][0] * (15.0f - r1) - m[2][0] * r2;
         p.y = pos->y + m[0][1] * (15.0f - r1) - m[2][1] * r2 + 0.4f;
         p.z = pos->z + m[0][2] * (15.0f - r1) - m[2][2] * r2;
-
         backPush = spdNorm * 1.45f;
         latVel = randRange(2.15f) * (0.70f + 0.50f * spdNorm);
         v.x = -m[0][0] * backPush + m[2][0] * latVel;
-        v.y = 2.85f * (1.0f - 0.82f * spdNorm);
+        v.y = rise * (1.0f - 0.82f * spdNorm);
         v.z = -m[0][2] * backPush + m[2][2] * latVel;
         Vec3f_Set(&acc, 0.0f, -0.09f * spdNorm, 0.0f);
 
-        pt = (WMParticle *)Particle_Spawn(smokeObj, p, v, acc, 6.6f, 0.34f,
-                                          (u16)(life + 1), 45, 185, 0, 0, 0);
+        pt = (WMParticle *)Particle_Spawn(smokeObj, p, v, acc, scale, 0.30f + 0.04f * d,
+                                          (u16)(life + 1), (u8)alphaStep, maxAlpha, 0, 0, 0);
         if (pt != NULL) {
-            pt->r = 242;
-            pt->g = 247;
-            pt->b = 255;
+            s32 g = 250 - (s32)(48.0f * d); /* pale white, then greyer */
+            u8 grey;
+            if (hp < WM_HOOD_HEAVY) {
+                g -= (WM_HOOD_HEAVY - hp) * 4; /* sooty near the end: down to about 120 */
+            }
+            grey = (u8)g;
+            pt->r = grey;
+            pt->g = grey;
+            pt->b = (u8)(grey + (grey < 250 ? 5 : 0));
         }
     } else {
-        /* Stage 2 black smoke (pre-explosion): gentler tilt & lateral dispersion */
+        /* black smoke before the car burns out: gentler tilt and spread */
         r2 = randRange(7.8f);
         p.x = pos->x + m[0][0] * (15.0f - r1) - m[2][0] * r2;
         p.y = pos->y + m[0][1] * (15.0f - r1) - m[2][1] * r2;
         p.z = pos->z + m[0][2] * (15.0f - r1) - m[2][2] * r2;
-
         backPush = spdNorm * 0.75f;
         latVel = randRange(0.95f) * (0.80f + 0.35f * spdNorm);
         v.x = -m[0][0] * backPush + m[2][0] * latVel;
         v.y = 3.90f * (1.0f - 0.42f * spdNorm);
         v.z = -m[0][2] * backPush + m[2][2] * latVel;
         Vec3f_Set(&acc, 0.0f, -0.025f * spdNorm, 0.0f);
-
         Particle_Spawn(smokeObj, p, v, acc, 7.6f, 0.32f, (u16)life, 50, 250, 0, 1, 1);
     }
-
+    }
+    }
     return 1;
 }
 
@@ -985,6 +1056,447 @@ static WMGfx *wmDrawLedBar(WMGfx *g, s32 x0, s32 y0, s32 x1, s32 y1, f32 val, in
     return g;
 }
 
+/* ---- Impact sparks (the spark pool, D_801245A4 + 0xC) ---- */
+
+/*
+ * The N64 marks a hard wall hit (surfaces 5 and 8) with Particles_EmitTrail: a streak
+ * of still spark sprites along the car's last move. On top of it, and on car-to-car
+ * hits, Wrecked Metal throws a burst from the contact point: sparks flying out and up,
+ * carried a little by the car, falling back under gravity, shrinking and fading. Their
+ * number follows the hit's force, halved when no player's car is in it.
+ */
+typedef struct {
+    u8 pad0[4];
+    s32 count;          /* 0x04 */
+    u8 pad8[0xA0 - 0x8];
+    s32 maxCount;       /* 0xA0 (Particles_EmitTrail's limit) */
+} WMSparkObj;
+
+static int wmIsHumanCar(void *carPtr);
+
+void Frame_ToMatrix(f32 m[4][4], void *car, s32 world);
+
+void WM_EmitSparks(void *poolPtr, void *carPtr, f32 offX, f32 offY, f32 offZ, f32 force, void *otherCar) {
+    WMSparkObj *pool = (WMSparkObj *)poolPtr;
+    f32 m[4][4];
+    f32 s;
+    Vec3f base, v, acc;
+    int n, i;
+    static f32 kv = -1.0f, sz = 12.0f;
+
+    if (!WM_Enabled() || pool == NULL || gGame == NULL) {
+        return;
+    }
+    if (kv < 0.0f) {
+        const char *e = getenv("DD64_SPARKV"); /* testing: the speed scale */
+        const char *z = getenv("DD64_SPARKSIZE"); /* testing: the size */
+        kv = e != NULL ? (f32)atof(e) : 1.0f;
+        sz = z != NULL ? (f32)atof(z) : 12.0f;
+    }
+    s = gGame->x1100->x70->xC->x10;
+    n = 6 + (int)(force * 0.6f);
+    if (n > 18) {
+        n = 18;
+    }
+    /* (the computer cars' own hits get the full burst too: they are seen from afar) */
+    /* where the car is, as the hood smoke takes it (Car_UpdateWreck), plus the contact's offset */
+    Frame_ToMatrix(m, carPtr, 1);
+    base.x = (m[3][0] + offX) * s;
+    base.y = (m[3][1] + offY) * s;
+    base.z = (m[3][2] + offZ) * s;
+    Vec3f_Set(&acc, 0.0f, -0.11f * kv, 0.0f);
+    for (i = 0; i < n && pool->count < pool->maxCount; i++) {
+        int far = rand() % 7 == 0; /* about one in seven flies off further and lives longer */
+        f32 spread = (far ? 1.4f + (f32)(rand() % 100) * 0.01f : 0.45f + (f32)(rand() % 100) * 0.007f) * kv;
+        f32 ang = (f32)(rand() % 628) * 0.01f;
+        WMParticle *pt;
+        v.x = cosf(ang) * spread;
+        v.y = (0.45f + (f32)(rand() % 100) * 0.006f) * kv; /* 0.45 .. 1.05 up: a low spray */
+        v.z = sinf(ang) * spread;
+        pt = (WMParticle *)Particle_Spawn(poolPtr, base, v, acc, sz + (f32)(rand() % 100) * 0.03f, -sz * 0.05f,
+                                          (u16)((far ? 16 : 9) + rand() % 6), 0x12, 0xFF, 0, 0, 0);
+        if (pt != NULL) {
+            /* hot metal: white, yellow, orange and a few red-orange embers */
+            static const u8 kSpark[6][3] = { { 255, 252, 230 }, { 255, 240, 150 }, { 255, 214, 70 },
+                                             { 255, 170, 40 }, { 255, 128, 24 }, { 240, 82, 20 } };
+            const u8 *c = kSpark[far ? 3 + rand() % 3 : rand() % 5];
+            pt->r = c[0];
+            pt->g = c[1];
+            pt->b = c[2];
+        }
+    }
+}
+
+/* ---- Headlight beams (Car_BuildLightDisplayLists, src/auto/1EDF4.c) ---- */
+
+typedef struct { s16 x, y, z; u16 flag; s16 s, t; u8 r, g, b, a; } WMVtx;
+
+/* The headlights' glow texture (D_80090930: 32x32 RGBA32, bytes R G B A in memory) warmer,
+   once: a 1990s sealed-beam yellow-white. Green a touch down, blue well down */
+void WM_WarmHeadlightTexture(void *tex) {
+    static void *done;
+    u8 *p = (u8 *)tex;
+    int i;
+
+    if (!WM_Enabled() || tex == NULL || done == tex) {
+        return;
+    }
+    done = tex;
+    if (getenv("DD64_DUMPLAMP") != NULL) { /* testing: the texture before and after, raw */
+        void Port_DumpBytes(const char *name, const void *p, int n);
+        Port_DumpBytes("lamp_before.bin", tex, 4096);
+    }
+    for (i = 0; i < 32 * 32; i++) {
+        p[i * 4 + 1] = (u8)(p[i * 4 + 1] * 238 / 255);
+        p[i * 4 + 2] = (u8)(p[i * 4 + 2] * 160 / 255);
+    }
+    if (getenv("DD64_DUMPLAMP") != NULL) {
+        void Port_DumpBytes(const char *name, const void *p, int n);
+        Port_DumpBytes("lamp_after.bin", tex, 4096);
+    }
+}
+
+/*
+ * The headlights' light on the road ahead: one soft fan per car, as a light pool would
+ * fall on the asphalt. A 5 x 5 grid of vertices in the car's own space (drawn in its display
+ * list, so it follows the car for free): it is born at the two lamps themselves, drops to
+ * just above the road, opens to a few car widths and fades in its vertices, with alpha 0 on
+ * every edge (no straight cut anywhere) and the far end rounded. Untextured, the colour and
+ * the fade in the vertices: 25 vertices, 32 small triangles a car.
+ * WM_HeadlightFade, each frame the car is drawn: the fan's size once the car's driver is
+ * known (70% for a player, 50% for the computer cars), its fade on a tilted or flying car,
+ * and the lamps breaking with the front corners' damage.
+ */
+#define WM_FAN_ROWS 5
+#define WM_FAN_COLS 5
+
+typedef struct {
+    WMVtx *v;           /* the fan's 25 vertices (the key) */
+    u8 sized, broken;   /* broken: bit 0 lamp 0, bit 1 lamp 1 (what is drawn dark now) */
+    void *car;          /* the car it belongs to (WM_HeadlightFade) */
+    s32 zmax[3];        /* the front, left-front and right-front zones' health at its best */
+    /* a failing lamp (first hit on its corner) flickers: per lamp, frames to the next change,
+       blinks left in the burst, and whether it is out right now */
+    s16 timer[2];
+    u8 blinks[2], out[2];
+    /* the glow quads' four G_TRI1 commands, kept to turn a lamp back on */
+    WMGfx *tri[4];
+    u32 triW0[4], triW1[4];
+    u8 triSaved;
+} WMFan;
+static WMFan sFans[32];
+
+static WMFan *wmFanSlot(WMVtx *v, int make) {
+    int i, free = -1;
+    for (i = 0; i < 32; i++) {
+        if (sFans[i].v == v) {
+            return &sFans[i];
+        }
+        if (sFans[i].v == NULL && free < 0) {
+            free = i;
+        }
+    }
+    if (!make) {
+        return NULL;
+    }
+    if (free < 0) {
+        memset(sFans, 0, sizeof(sFans));
+        free = 0;
+    }
+    memset(&sFans[free], 0, sizeof(sFans[free]));
+    sFans[free].v = v;
+    return &sFans[free];
+}
+
+/* The vertices for size k, with broken lamps dark (their side of the fan gone) */
+static int wmFanBuild(WMVtx *v, const f32 *rear, const f32 *front, f32 k, int broken) {
+    /* along the beam (car lengths), the outer half width (in half lamp spacings), alpha */
+    static const f32 kDist[WM_FAN_ROWS] = { 0.0f, 1.0f, 2.6f, 4.4f, 6.0f };
+    static const f32 kHalf[WM_FAN_ROWS] = { 1.35f, 3.2f, 5.2f, 6.4f, 5.8f };
+    static const u8 kAlphaLamp[WM_FAN_ROWS] = { 110, 145, 115, 55, 0 }; /* columns 1 and 3 */
+    static const u8 kAlphaMid[WM_FAN_ROWS] = { 20, 140, 145, 62, 0 };   /* column 2 */
+    f32 fwd[3], side[3], up[3], mid[3], len, sl, ul, halfLamp, ground;
+    int r, c, kk;
+
+    for (kk = 0; kk < 3; kk++) {
+        fwd[kk] = (front[kk] + front[3 + kk]) * 0.5f - (rear[kk] + rear[3 + kk]) * 0.5f;
+        side[kk] = front[3 + kk] - front[kk];
+        mid[kk] = (front[kk] + front[3 + kk]) * 0.5f;
+    }
+    len = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
+    sl = sqrtf(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+    if (len < 0.001f || sl < 0.001f) {
+        return 0;
+    }
+    for (kk = 0; kk < 3; kk++) {
+        fwd[kk] /= len;
+        side[kk] /= sl;
+    }
+    up[0] = fwd[1] * side[2] - fwd[2] * side[1];
+    up[1] = fwd[2] * side[0] - fwd[0] * side[2];
+    up[2] = fwd[0] * side[1] - fwd[1] * side[0];
+    ul = sqrtf(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+    if (ul < 0.001f) {
+        return 0;
+    }
+    for (kk = 0; kk < 3; kk++) {
+        up[kk] /= ul;
+    }
+    halfLamp = sl * 0.5f;
+    ground = len * 0.02f;
+
+    for (r = 0; r < WM_FAN_ROWS; r++) {
+        /* row 0 sits on the lamps: its inner columns are the lamps themselves */
+        f32 outer = r == 0 ? kHalf[0] * halfLamp : kHalf[r] * k * halfLamp;
+        f32 inner = r == 0 ? halfLamp : outer * 0.5f;
+        if (inner < halfLamp) {
+            inner = halfLamp; /* never narrower than the lamps */
+        }
+        if (outer < inner * 1.35f) {
+            outer = inner * 1.35f;
+        }
+        for (c = 0; c < WM_FAN_COLS; c++) {
+            WMVtx *q = &v[r * WM_FAN_COLS + c];
+            f32 d = kDist[r] * len * k, h = r == 0 ? 0.0f : -ground, w, p[3];
+            f32 a;
+            w = c == 0 ? -outer : c == 1 ? -inner : c == 2 ? 0.0f : c == 3 ? inner : outer;
+            if (r == WM_FAN_ROWS - 1) {
+                /* the far end rounded: the outer columns come back toward the lamps */
+                d -= (c == 0 || c == 4 ? 1.3f : c == 2 ? 0.0f : 0.35f) * len * k;
+            }
+            for (kk = 0; kk < 3; kk++) {
+                p[kk] = mid[kk] + fwd[kk] * d + side[kk] * w + up[kk] * h;
+            }
+            a = (c == 0 || c == 4) ? 0.0f : (c == 2 ? kAlphaMid[r] : kAlphaLamp[r]);
+            /* a broken lamp's side goes dark, the middle at half */
+            if ((broken & 1) && c < 2) a = 0.0f;
+            if ((broken & 2) && c > 2) a = 0.0f;
+            if (c == 2 && broken) a *= broken == 3 ? 0.0f : 0.5f;
+            q->x = (s16)(p[0] * 100.0f);
+            q->y = (s16)(p[1] * 100.0f);
+            q->z = (s16)(p[2] * 100.0f);
+            q->flag = 0;
+            q->s = q->t = 0;
+            q->r = 255;
+            q->g = (u8)(240 - r * 4); /* white-yellow, a little warmer far out */
+            q->b = (u8)(196 - r * 10);
+            q->a = (u8)a;
+        }
+    }
+    return 1;
+}
+
+void *WM_HeadlightBeams(void *gfxPtr, void *vtxPtr, const float *rear, const float *front) {
+    WMGfx *g = (WMGfx *)gfxPtr;
+    WMVtx *v = (WMVtx *)vtxPtr;
+    WMFan *fan;
+    int r, c;
+
+    if (!WM_Enabled()) {
+        return gfxPtr;
+    }
+    fan = wmFanSlot(v, 1);
+    /* (a race sets its cars up twice while loading: start this car's fan over) */
+    fan->sized = 0;
+    fan->broken = 0;
+    fan->triSaved = 0;
+    memset(fan->zmax, 0, sizeof(fan->zmax));
+    memset(fan->timer, 0, sizeof(fan->timer));
+    memset(fan->out, 0, sizeof(fan->out));
+    if (!wmFanBuild(v, rear, front, 1.0f, 0)) {
+        fan->v = NULL;
+        return gfxPtr;
+    }
+    WM_GFX2(g, 0xE7000000, 0);
+    WM_GFX2(g, 0xD9FDF9FF, 0x00200004);          /* no lighting, no culling; shade, smooth */
+    WM_GFX2(g, 0xFC41C683, 0xFF8FFFFF);          /* shade x primitive, colour and alpha */
+    WM_GFX2(g, 0xFA0000FE, 0xFFFFFFFF);          /* the primitive colour: WM_HeadlightFade sets its alpha */
+    WM_GFX2(g, 0xE200001C, 0x00504A50);          /* depth tested, not written, blended */
+    WM_GFX2(g, 0x01000000 | ((WM_FAN_ROWS * WM_FAN_COLS) << 12) | ((WM_FAN_ROWS * WM_FAN_COLS) << 1),
+            (u32)(uintptr_t)v);                  /* 25 vertices into slots 0-24 */
+    for (r = 0; r + 1 < WM_FAN_ROWS; r++) {
+        for (c = 0; c + 1 < WM_FAN_COLS; c++) {
+            u32 a0 = r * WM_FAN_COLS + c, a1 = a0 + 1, b0 = a0 + WM_FAN_COLS, b1 = b0 + 1;
+            WM_GFX2(g, 0x06000000 | (a0 * 2) << 16 | (a1 * 2) << 8 | (b1 * 2), (a0 * 2) << 16 | (b1 * 2) << 8 | (b0 * 2));
+        }
+    }
+    WM_GFX2(g, 0xD9FFFFFF, 0x00020000);          /* lighting back on for what follows */
+    return g;
+}
+
+/* How much of the headlights' light on the road and walls is left: 1, half with one lamp
+   broken, 0 with both (Light_UpdateVertexColors, through WM_LightMul) */
+static f32 sLightMul = 1.0f;
+
+void WM_SetLightCar(void *carPtr) {
+    int i;
+    sLightMul = 1.0f;
+    for (i = 0; i < 32; i++) {
+        if (sFans[i].v != NULL && sFans[i].car == carPtr) {
+            int b = sFans[i].broken;
+            sLightMul = b == 3 ? 0.0f : b ? 0.55f : 1.0f;
+            return;
+        }
+    }
+}
+
+float WM_LightMul(void) {
+    return sLightMul;
+}
+
+/* A small random sequence of our own, so the flicker leaves the game's rand() alone */
+static u32 wmRand(void) {
+    static u32 s = 0x9E3779B9u;
+    s ^= s << 13;
+    s ^= s >> 17;
+    s ^= s << 5;
+    return s;
+}
+
+/* A front corner's health (Car.damage[zone], the u32 at +8 of each 0x14-byte zone) */
+static s32 wmZoneHealth(void *carPtr, int zone) {
+    return *(s32 *)((u8 *)carPtr + 0xA6C + zone * 0x14 + 8);
+}
+
+void WM_HeadlightFade(void *carPtr, void *dlPtr) {
+    static void *sCar[24];
+    static f32 sK[24];
+    WMCar *car = (WMCar *)carPtr;
+    WMGfx *g = (WMGfx *)dlPtr, *s, *prim = NULL;
+    WMVtx *v = NULL;
+    WMFan *fan;
+    f32 m[4][4], upLen, upright, target;
+    int i, air = 0, slot, broken = 0;
+    static int test = -2, testFlick = -1;
+
+    if (!WM_Enabled() || dlPtr == NULL) {
+        return;
+    }
+    for (i = 0, s = g; i < 96 && (s->w0 >> 24) != 0xDF; i++, s++) {
+        if (s->w0 == 0xFA0000FE) {
+            prim = s;
+        } else if (prim != NULL && (s->w0 >> 24) == 0x01) {
+            v = (WMVtx *)(uintptr_t)s->w1;
+            break;
+        }
+    }
+    if (prim == NULL || v == NULL || (fan = wmFanSlot(v, 0)) == NULL) {
+        return;
+    }
+    fan->car = carPtr;
+
+    /* The lamps follow the front corners' damage (each zone starts at 3): lamp 0 (the car's
+       right) the right front (zone 1), lamp 1 (its left) the left front (zone 4), both the
+       front (zone 0). The first hit on a corner leaves its lamp failing: it flickers, in
+       uneven bursts, now and then; the next hit breaks it (dark for good).
+       DD64_BREAKLAMP=zone / DD64_FLICKLAMP=zone (testing) break / fail that zone at once */
+    if (test == -2) {
+        const char *e = getenv("DD64_BREAKLAMP");
+        const char *f = getenv("DD64_FLICKLAMP");
+        test = e != NULL ? atoi(e) : -1;
+        testFlick = f != NULL ? atoi(f) : -1;
+    }
+    {
+        static const int kZone[3] = { 0, 1, 4 };
+        int failing = 0, dark;
+        for (i = 0; i < 3; i++) {
+            int bits = i == 0 ? 3 : i; /* zone 0 both lamps, zone 1 lamp 0 (bit 1), zone 4 lamp 1 (bit 2) */
+            s32 h = wmZoneHealth(carPtr, kZone[i]);
+            if (h > fan->zmax[i]) {
+                fan->zmax[i] = h;
+            }
+            if (test == kZone[i]) {
+                h = 0;
+            } else if (testFlick == kZone[i] && fan->zmax[i] > 0) {
+                h = fan->zmax[i] - 1;
+            }
+            if (fan->zmax[i] > 0 && h * 100 < fan->zmax[i] * (i == 0 ? 35 : 60)) {
+                broken |= bits;
+            } else if (fan->zmax[i] > 0 && h < fan->zmax[i]) {
+                failing |= bits;
+            }
+        }
+        failing &= ~broken;
+        /* the flicker: a lamp mostly on, going out in short bursts of 1-3 blinks (2-6 frames
+           out, 2-5 back on), the bursts 10 frames to 3 seconds apart, sometimes close together */
+        for (i = 0; i < 2; i++) {
+            if (!(failing & (1 << i))) {
+                fan->out[i] = 0;
+                fan->timer[i] = 0;
+                continue;
+            }
+            if (--fan->timer[i] > 0) {
+                continue;
+            }
+            if (fan->out[i]) {
+                fan->out[i] = 0; /* back on */
+                fan->timer[i] = fan->blinks[i] > 0 ? (s16)(2 + wmRand() % 4)
+                                                   : (s16)(wmRand() % 4 == 0 ? 10 + wmRand() % 30 : 40 + wmRand() % 140);
+            } else {
+                if (fan->blinks[i] == 0) {
+                    u32 r = wmRand() % 10;
+                    fan->blinks[i] = (u8)(r < 5 ? 1 : r < 8 ? 2 : 3);
+                }
+                fan->blinks[i]--;
+                fan->out[i] = 1;
+                fan->timer[i] = (s16)(2 + wmRand() % 5);
+            }
+        }
+        dark = broken | (fan->out[0] ? 1 : 0) | (fan->out[1] ? 2 : 0);
+        if (!fan->sized || dark != fan->broken) {
+            f32 k = wmIsHumanCar(carPtr) ? 0.70f : 0.50f;
+            /* the lamps from the car's own stats (CarStats at Car+0xBEC: +0x128 the rear
+               lamps, +0x170 the front ones), as Car_BuildLightDisplayLists read them */
+            const f32 *st = (const f32 *)((u8 *)carPtr + 0xBEC);
+            wmFanBuild(v, st + 0x128 / 4, st + 0x170 / 4, k, dark);
+            /* the lamps' glow quads (G_TRI1, vertices 0-3 lamp 0, 4-7 lamp 1): off for a dark
+               lamp (the car shows its own unlit lamp texture), back on when it lights again */
+            if (!fan->triSaved) {
+                int n = 0;
+                for (s = g; s < prim && n < 4; s++) {
+                    if ((s->w0 >> 24) == 0x05) {
+                        fan->tri[n] = s;
+                        fan->triW0[n] = s->w0;
+                        fan->triW1[n] = s->w1;
+                        n++;
+                    }
+                }
+                fan->triSaved = 1;
+            }
+            for (i = 0; i < 4; i++) {
+                if (fan->tri[i] != NULL) {
+                    int lamp = ((fan->triW0[i] >> 16) & 0xFF) / 2 >= 4;
+                    fan->tri[i]->w0 = (dark & (1 << lamp)) ? 0 : fan->triW0[i];
+                    fan->tri[i]->w1 = (dark & (1 << lamp)) ? 0 : fan->triW1[i];
+                }
+            }
+            fan->sized = 1;
+            fan->broken = (u8)dark;
+        }
+    }
+
+    Frame_ToMatrix(m, carPtr, 1);
+    upLen = sqrtf(m[1][0] * m[1][0] + m[1][1] * m[1][1] + m[1][2] * m[1][2]);
+    upright = upLen > 0.0001f ? m[1][1] / upLen : 1.0f;
+    for (i = 0; i < 4; i++) {
+        if (car->wheels[i].groundNormal.z >= 1.0f) { /* a wheel in the air */
+            air++;
+        }
+    }
+    /* full on a level car with its wheels down; gone past ~25 degrees of tilt or two wheels up */
+    target = (upright - 0.90f) / 0.06f;
+    if (target > 1.0f) target = 1.0f;
+    if (target < 0.0f) target = 0.0f;
+    if (air >= 2) target = 0.0f;
+    slot = (int)(((u32)(uintptr_t)carPtr >> 4) % 24);
+    if (sCar[slot] != carPtr) {
+        sCar[slot] = carPtr;
+        sK[slot] = target;
+    }
+    sK[slot] += (target - sK[slot]) * 0.25f;
+    prim->w1 = 0xFFFFFF00u | (u32)(sK[slot] * 255.0f);
+}
+
 static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     if (target > cur) {
         cur += (target - cur) * riseRate + 0.025f;
@@ -1013,11 +1525,9 @@ void *WM_HudDraw(void *gfxPtr) {
     int hudDx4 = 1; /* (always reset after the bars) */
 
     {
-        /* the touch controls hide the up/down arrows while the player drives (video.c) */
+        /* the touch controls hide the up/down arrows during a race, pause aside (video.c) */
         void Port_NoteDriving(int driving);
-        int Port_OptIsOpen(void);
-        Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL &&
-                         (gGame->x10FC == 0x1B || gGame->x10FC == 0x1C) && !Port_OptIsOpen());
+        Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL);
     }
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
@@ -1033,6 +1543,27 @@ void *WM_HudDraw(void *gfxPtr) {
     }
 
     car = (WMCar *)D_800958F0[0].x0;
+    {
+        /* DD64_CARHP=n (testing): the player's car at n health, once per race */
+        static void *applied;
+        const char *e = getenv("DD64_CARHP");
+        if (e != NULL && car != NULL && applied != (void *)car) {
+            car->health = atoi(e);
+            applied = car;
+        }
+    }
+    {
+        /* DD64_SPARKTEST=n (testing): a spark burst off the player's car every n frames */
+        static int every = -1;
+        static int f;
+        if (every < 0) {
+            const char *e = getenv("DD64_SPARKTEST");
+            every = e != NULL ? atoi(e) : 0;
+        }
+        if (every > 0 && car != NULL && D_801245A4 != NULL && ++f % every == 0) {
+            WM_EmitSparks(D_801245A4 + 0xC, car, 0.0f, 0.5f, 0.0f, 15.0f, NULL);
+        }
+    }
     if (car == NULL || car->wrecked) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;

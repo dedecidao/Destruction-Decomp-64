@@ -1,5 +1,12 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
+void WM_WarmHeadlightTexture(void *tex);
+void *WM_HeadlightBeams(void *gfx, void *vtx, const float *rear, const float *front);
+#endif
 
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { u32 w0; u32 w1; } Gfx;
@@ -82,7 +89,11 @@ void Car_BuildLightDisplayLists(Car *car, CarStats *s) {
             vtx++;
         }
     }
+#ifdef TARGET_PC
+    if (WM_NightCarLights(D_800958B4)) {
+#else
     if (D_800958B4 == 2 || D_800958B4 == 11) {
+#endif
         Heap_Alloc(gMainHeap, car->xB44, 0xC0, 7, 0);
         gfx = HeapBlock_Ptr(car->xB44);
         Heap_Alloc(gMainHeap, car->xB5C, 0x80, 7, 0);
@@ -119,10 +130,19 @@ void Car_BuildLightDisplayLists(Car *car, CarStats *s) {
                 vtx++;
             }
         }
+#ifdef TARGET_PC
+        /* room for Wrecked Metal's headlight beams after the glow quads (WM_HeadlightBeams) */
+        Heap_Alloc(gMainHeap, car->xB4C, 0x200, 7, 0);
+        gfx = HeapBlock_Ptr(car->xB4C);
+        Heap_Alloc(gMainHeap, car->xB64, 0x240, 7, 0); /* 8 glow + 25 fan vertices */
+        vtx = HeapBlock_Ptr(car->xB64);
+        WM_WarmHeadlightTexture(D_80090930);
+#else
         Heap_Alloc(gMainHeap, car->xB4C, 0xC0, 7, 0);
         gfx = HeapBlock_Ptr(car->xB4C);
         Heap_Alloc(gMainHeap, car->xB64, 0x80, 7, 0);
         vtx = HeapBlock_Ptr(car->xB64);
+#endif
         GFX2(gfx, 0xD9FFF9FF, 0);
         GFX2(gfx, 0xD9FFFFFF, 0x401);
         GFX2(gfx, 0xE3001001, 0);
@@ -139,6 +159,10 @@ void Car_BuildLightDisplayLists(Car *car, CarStats *s) {
         GFX2(gfx, 0x05060402, 0);
         GFX2(gfx, 0x05080A0C, 0);
         GFX2(gfx, 0x050E0C0A, 0);
+#ifdef TARGET_PC
+        /* the light on the road: vertices 8-32 of the same buffer */
+        gfx = (Gfx *)WM_HeadlightBeams(gfx, (u8 *)vtx + 8 * sizeof(Vtx), &s->x128[0].x, &s->x170[0].x);
+#endif
         GFX2(gfx, 0xDF000000, 0);
         for (i = 0; i < 2; i++) {
             for (j = 0; j < 4; j++) {

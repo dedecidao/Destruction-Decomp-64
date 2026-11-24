@@ -55,6 +55,9 @@ typedef struct {
     float hudStartLights;       /* the start lights' size, 1.0 = the N64's */
     int hudPos[6][2];           /* WM_HUD_*: top-left on a 1280x720 screen, -1 = the N64's */
     float hudScale[6];          /* WM_HUD_*: size, 1.0 = the N64's */
+    /* Car lights ([lights] in wm_tuning.ini) */
+    int lightsAllTracks;        /* the night tracks' head and tail lights on every car, every track */
+    int lightsGround;           /* with them, the player's headlights light the road */
 } WMTuning;
 
 /* The HUD groups the widescreen layout moves ([hud] in wm_tuning.ini) */
@@ -98,6 +101,13 @@ void WM_ThunderPlay(float dist);
 /* Game-side hooks (port/game/wm_mod.c, port/game/wm_score.c) */
 int WM_EmitWheelDust(void *car, void *a, void *b);
 int WM_EmitHoodSmoke(void *car, void *pos, void *mtx);
+int WM_HoodSmokeStartHp(void);
+void WM_HeadlightFade(void *car, void *dl);
+void WM_SetLightCar(void *car);
+float WM_LightMul(void);
+void WM_EmitSparks(void *pool, void *car, float offX, float offY, float offZ, float force, void *otherCar);
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
 int WM_CanInitAiSkid(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);

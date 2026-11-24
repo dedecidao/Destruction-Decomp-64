@@ -1,5 +1,10 @@
 #include "common.h"
 #include "m2c.h"
+#ifdef TARGET_PC
+/* Wrecked Metal: the night tracks' car lights on any track (port/src/wm_tuning.c) */
+int WM_NightCarLights(int track);
+int WM_NightGroundLight(int track);
+#endif
 
 typedef struct { f32 x, y, z; } Vec3f;
 typedef struct { s16 x, y, z; u8 pad[0xA]; } DVtx;
@@ -71,7 +76,11 @@ void Car_DeformMeshAtImpact(DCar *car, s32 force, Vec3f pos, s32 type) {
     deform(vtx, mesh->n, box, &p, s);
     vtx = HeapBlock_Ptr(&car->xB54);
     deform(vtx, 8, box, &p, s);
+#ifdef TARGET_PC
+    if (WM_NightCarLights(D_800958B4)) {
+#else
     if (D_800958B4 == 2 || D_800958B4 == 11) {
+#endif
         vtx = HeapBlock_Ptr(&car->xB5C);
         deform(vtx, 8, box, &p, s);
         vtx = HeapBlock_Ptr(&car->xB64);

@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 8 /* 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 9 /* 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -102,6 +102,9 @@ static void setDefaults(WMTuning *t) {
     t->hudStartLights = 0.40f;
     memcpy(t->hudPos, kHudDefaults, sizeof(t->hudPos));
     memcpy(t->hudScale, kHudScaleDefaults, sizeof(t->hudScale));
+
+    t->lightsAllTracks = 1;
+    t->lightsGround = 1; /* the road and tunnel light, softened (Light_UpdateVertexColors) */
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -180,6 +183,11 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
                     t->weatherChance[i][2], t->weatherChance[i][3]);
         }
     }
+    fprintf(f, "\n[lights]\n");
+    fprintf(f, "; all_tracks = 1: every car's head and tail lights on, on every track, as the night tracks have them.\n");
+    fprintf(f, "; ground = 1: the player's headlights also light the road and tunnel walls ahead (softened).\n");
+    fprintf(f, "all_tracks = %d\n", t->lightsAllTracks);
+    fprintf(f, "ground = %d\n", t->lightsGround);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -215,6 +223,14 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->scoreFxAudio = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "volume") == 0) {
             t->scoreFxVolume = clampf((float)atof(val), 0.0f, 2.0f);
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "lights") == 0) {
+        if (SDL_strcasecmp(key, "all_tracks") == 0) {
+            t->lightsAllTracks = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "ground") == 0) {
+            t->lightsGround = atoi(val) != 0;
         }
         return;
     }
@@ -419,6 +435,20 @@ const WMTuning *WM_GetTuning(void) {
 int WM_SmokePoolMax(void) {
     WM_ReloadTuning();
     return WM_Enabled() ? sTuning.smokeMaxParticles : 0xC8;
+}
+
+/* The night tracks (2, an arena, and 11, the city at night) light every car; Wrecked Metal
+   can do it on every track. The answer must not change within a race: the lights are
+   allocated when the cars are made and freed with them (the ini reloads between races) */
+int WM_NightCarLights(int track) {
+    return track == 2 || track == 11 || (WM_Enabled() && sTuning.lightsAllTracks);
+}
+
+int WM_NightGroundLight(int track) {
+    if (WM_Enabled()) {
+        return sTuning.lightsAllTracks && sTuning.lightsGround; /* the beams instead, by default */
+    }
+    return track == 2 || track == 11;
 }
 
 int WM_HudBarsEnabled(void) {
