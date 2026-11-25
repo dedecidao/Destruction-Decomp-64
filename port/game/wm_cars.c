@@ -195,41 +195,41 @@ int WM_WreckPushable(void) {
    (Car+0x94 is the wreck's time + 6 s, Car_CheckWrecked), shrinking from 14 to 5; after
    that 0, and the N64's smoke takes over (*n moved past its flames). The first second is
    the N64's own burst. */
-f32 WM_WreckFire(void *car, s32 *n) {
+/* How long ago this wreck began, in seconds (its particle counter, Car+0x90, starts
+   again at 1 on a wreck and is at 20 a third of a second in) */
+f32 WM_WreckAge(void *car, s32 n) {
     extern u8 *gGame;
     f32 Time_ToSeconds(void *);
+    static void *cars[128];
+    static f32 start[128];
+    f32 now = Time_ToSeconds(gGame + 0x10A8);
+    int i, free = -1;
+    for (i = 0; i < 128 && cars[i] != car; i++) {
+        if (cars[i] == NULL && free < 0) {
+            free = i;
+        }
+    }
+    if (i == 128) {
+        i = free >= 0 ? free : 0;
+        cars[i] = car;
+        start[i] = now - n / 60.0f;
+    } else if (n <= 2) {
+        start[i] = now - n / 60.0f; /* a new wreck */
+    }
+    return now - start[i];
+}
+
+f32 WM_WreckFire(void *car, s32 *n) {
     f32 t;
     if (!WM_Enabled() || *n < 20) {
         return 0.0f;
     }
-    {
-        /* when this wreck began: its particle counter (Car+0x90) restarts at 1 on a wreck */
-        static void *cars[128];
-        static f32 start[128];
-        f32 now = Time_ToSeconds(gGame + 0x10A8);
-        int i, free = -1;
-        for (i = 0; i < 128 && cars[i] != car; i++) {
-            if (cars[i] == NULL && free < 0) {
-                free = i;
-            }
-        }
-        if (i == 128) {
-            i = free >= 0 ? free : 0;
-            cars[i] = car;
-            start[i] = now - *n / 60.0f;
-        } else if (*n == 20) {
-            start[i] = now - *n / 60.0f; /* a new wreck (its counter starts again) */
-        }
-        t = now - start[i];
-    }
+    t = WM_WreckAge(car, *n);
     if (t < 0.0f || t >= 50.0f) {
         if (*n < 110) {
             *n = 110; /* the N64's smoke from here */
         }
         return 0.0f;
-    }
-    if (*n == 20 && getenv("DD64_WRECKLOG") != NULL) {
-        Port_Log("wrecklog: car %p model %d burning (t %.1f)", car, *(s32 *)((u8 *)car + 0x34), (double)t);
     }
     return 14.0f - t * (9.0f / 50.0f);
 }

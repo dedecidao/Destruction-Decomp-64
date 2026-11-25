@@ -1648,3 +1648,122 @@ void *WM_HudDraw(void *gfxPtr) {
     }
     return WM_ScoreDraw(g);
 }
+
+/* ---- Wrecked Metal: the wreck's explosion and fire (Car_EmitWreckParticles) ----
+ *
+ * The N64 gives a wreck one big flame a frame at a random spot for a third of a second,
+ * then a shrinking one, then smoke. Here, on the game's own flame and smoke particles,
+ * a few a frame at most:
+ *   the blast (the first 0.4 s): a fireball of 10 flames thrown out and up all over the
+ *     car, embers flying wide, black smoke billowing up, then 2 flames a frame shrinking;
+ *   the fire (to 50 s): the flames come out of the car itself, one place a frame in turn:
+ *     a medium flame from the engine (twice as often), the two side windows and the boot,
+ *     each flickering in size, with a black smoke plume from the roof; past 40 s they
+ *     die down; after 50 s the N64's smoke.
+ * The matrix rows: m[0..2] the car's forward, m[4..6] up, m[8..10] its side (the units
+ * those of the N64's own wreck flames: the hood is 15 forward). */
+f32 WM_WreckAge(void *car, s32 n);
+
+static f32 fxRand(void) { /* 0..1, our own sequence */
+    return (f32)(wmRand() & 0xFFFF) / 65535.0f;
+}
+
+static void fxAt(Vec3f *p, f32 px, f32 py, f32 pz, const f32 *m, f32 fwd, f32 side, f32 up) {
+    p->x = px + m[0] * fwd + m[8] * side + m[4] * up;
+    p->y = py + m[1] * fwd + m[9] * side + m[5] * up;
+    p->z = pz + m[2] * fwd + m[10] * side + m[6] * up;
+}
+
+static void fxFlame(Vec3f p, Vec3f v, f32 size, f32 grow, s32 life) {
+    WMParticleObj *o = (WMParticleObj *)(D_801245A4 + 0x148);
+    Vec3f acc;
+    if (o->count >= o->maxCount) {
+        return;
+    }
+    Vec3f_Set(&acc, 0.0f, 0.0f, 0.0f);
+    Particle_Spawn(o, p, v, acc, size, grow, (u16)life, (u8)(0xFF / life), 0xFF, 0, 0, 5);
+}
+
+static void fxSmoke(Vec3f p, Vec3f v, f32 size, s32 life) {
+    WMParticleObj *o = (WMParticleObj *)(D_801245A4 + 0xB0);
+    Vec3f acc;
+    if (o->count >= o->maxCount) {
+        return;
+    }
+    Vec3f_Set(&acc, 0.0f, 0.02f, 0.0f);
+    Particle_Spawn(o, p, v, acc, size, 0.34f, (u16)life, 50, 250, 0, 1, 1); /* black */
+}
+
+int WM_WreckFx(void *car, f32 px, f32 py, f32 pz, f32 *m, s32 n) {
+    s32 life = 0x13 - D_800D31CC * 3, frame, i;
+    f32 age;
+    Vec3f p, v;
+    if (!WM_Enabled() || D_801245A4 == NULL) {
+        return 0;
+    }
+    age = WM_WreckAge(car, n);
+    if (age < 0.0f || age >= 50.0f) {
+        return 0; /* the N64's smoke */
+    }
+    frame = (s32)(age * 60.0f);
+    if (age < 0.4f) {
+        /* the blast */
+        if (frame <= 1) {
+            for (i = 0; i < 10; i++) {
+                f32 fw = (fxRand() - 0.5f) * 40.0f, sd = (fxRand() - 0.5f) * 18.0f, up = fxRand() * 8.0f;
+                f32 sp = 5.0f + fxRand() * 9.0f;
+                fxAt(&p, px, py, pz, m, fw, sd, up + 2.0f);
+                v.x = (m[0] * fw + m[8] * sd) / 20.0f * sp;
+                v.y = 6.0f + fxRand() * 7.0f;
+                v.z = (m[2] * fw + m[10] * sd) / 20.0f * sp;
+                fxFlame(p, v, 26.0f + fxRand() * 22.0f, 1.5f, life + 6);
+            }
+            for (i = 0; i < 8; i++) { /* embers */
+                f32 a = fxRand() * 6.2832f, sp = 14.0f + fxRand() * 16.0f;
+                fxAt(&p, px, py, pz, m, 0.0f, 0.0f, 5.0f);
+                v.x = __builtin_cosf(a) * sp;
+                v.y = 8.0f + fxRand() * 14.0f;
+                v.z = __builtin_sinf(a) * sp;
+                fxFlame(p, v, 2.5f + fxRand() * 2.0f, 0.1f, life + 10);
+            }
+        }
+        for (i = 0; i < 2; i++) {
+            f32 k = 1.0f - age / 0.4f;
+            f32 fw = (fxRand() - 0.5f) * 34.0f, sd = (fxRand() - 0.5f) * 14.0f;
+            fxAt(&p, px, py, pz, m, fw, sd, 4.0f + fxRand() * 6.0f);
+            Vec3f_Set(&v, (fxRand() - 0.5f) * 6.0f, 5.0f + fxRand() * 5.0f, (fxRand() - 0.5f) * 6.0f);
+            fxFlame(p, v, 14.0f + 20.0f * k + fxRand() * 8.0f, 1.0f, life + 2);
+        }
+        if (frame % 3 == 0) {
+            fxAt(&p, px, py, pz, m, (fxRand() - 0.5f) * 20.0f, (fxRand() - 0.5f) * 10.0f, 10.0f);
+            Vec3f_Set(&v, (fxRand() - 0.5f) * 3.0f, 6.0f + fxRand() * 3.0f, (fxRand() - 0.5f) * 3.0f);
+            fxSmoke(p, v, 10.0f + fxRand() * 4.0f, life + 14);
+        }
+        return 1;
+    }
+    {
+        /* the fire: one place a frame, in turn; dying down after 40 s */
+        static const f32 kPlace[6][4] = {
+            /* forward, side, up, size */
+            { 15.0f, 0.0f, 4.0f, 9.0f },   /* the engine */
+            { -1.0f, -7.5f, 7.0f, 5.0f },  /* a side window */
+            { 13.0f, 3.0f, 3.0f, 7.5f },   /* the engine again */
+            { -1.0f, 7.5f, 7.0f, 5.0f },   /* the other window */
+            { -20.0f, 0.0f, 4.0f, 4.5f },  /* the boot */
+            { 16.0f, -3.0f, 3.0f, 7.0f },  /* the engine's other side */
+        };
+        const f32 *pl = kPlace[frame % 6];
+        f32 fade = age > 40.0f ? 1.0f - (age - 40.0f) / 20.0f : 1.0f; /* to half by 50 s */
+        f32 flick = 0.75f + fxRand() * 0.5f;
+        fxAt(&p, px, py, pz, m, pl[0] + (fxRand() - 0.5f) * 3.0f, pl[1] + (fxRand() - 0.5f) * 2.0f, pl[2]);
+        Vec3f_Set(&v, (fxRand() - 0.5f) * 1.2f, 2.6f + fxRand() * 1.6f, (fxRand() - 0.5f) * 1.2f);
+        fxFlame(p, v, pl[3] * flick * fade, 0.28f, life - 3); /* short-lived: tongues of flame, not a column */
+        if (frame % 5 == 0) {
+            /* the plume off the roof */
+            fxAt(&p, px, py, pz, m, (fxRand() - 0.5f) * 8.0f, (fxRand() - 0.5f) * 5.0f, 11.0f);
+            Vec3f_Set(&v, (fxRand() - 0.5f) * 0.8f, 3.4f + fxRand() * 1.2f, (fxRand() - 0.5f) * 0.8f);
+            fxSmoke(p, v, (7.0f + fxRand() * 2.0f) * (0.6f + 0.4f * fade), life + 10);
+        }
+    }
+    return 1;
+}

@@ -40,10 +40,13 @@ void Car_EmitWreckParticles(Obj *arg0, Vec3f pos, f32 *m) {
     }
 #ifdef TARGET_PC
     {
-        /* Wrecked Metal: the flames burn on for 50 seconds before the smoke */
-        f32 size = WM_WreckFire(arg0, &n);
-        if (size > 0.0f) {
-            func_800172D0(D_801245A4 + 0x148, p, colB, size, 0.5f, t);
+        /* Wrecked Metal: the blast, then the car on fire for 50 seconds (wm_mod.c), then
+           the N64's smoke */
+        int WM_WreckFx(void *car, f32 px, f32 py, f32 pz, f32 *m, s32 n);
+        if (WM_WreckFx(arg0, pos.x, pos.y, pos.z, m, n)) {
+            return;
+        }
+        if (WM_WreckFire(arg0, &n) > 0.0f) { /* (sets n past the N64's flames once burnt out) */
             return;
         }
     }
