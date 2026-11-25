@@ -433,7 +433,10 @@ Car *Car_Create(CarStats *s) {
         int WM_CarStatsSane(const void *);
         const u32 *baja = pct > 0 ? WM_CarRecord(12) : NULL;
         if (baja != NULL && WM_CarStatsSane(baja) && WM_CarStatsSane(s)) { /* only on sane records */
+            int WM_HealthPct(int human);
             car->x10 = ((s32)baja[2] + (car->x10 - s->x8)) * pct / 100;
+            /* [cars] health_player / health_ai: a little more for every car, the computer cars most */
+            car->x10 = car->x10 * WM_HealthPct(car->x30 == 0) / 100;
             if (car->x10 < 1) {
                 car->x10 = 1;
             }

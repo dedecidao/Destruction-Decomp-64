@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 16 /* 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 17 /* 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -114,6 +114,8 @@ static void setDefaults(WMTuning *t) {
     t->linePct = 105;
     t->packExtra = 4;
     t->wreckNear = 100;
+    t->healthPlayerPct = 115;
+    t->healthAiPct = 120;
 
     t->durabilityPct = 50;
     t->sparksCarHits = 0;
@@ -226,6 +228,9 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, ";   for difficulty and mode included (50 = half); 0 = each car its own, as the N64.\n");
     fprintf(f, "; spark_car_hits = 1: sparks where two cars hit (the sparks off walls stay either way).\n");
     fprintf(f, "durability = %d\n", t->durabilityPct);
+    fprintf(f, "; health_player / health_ai = the starting health on top of that, %% (the player / the computer cars).\n");
+    fprintf(f, "health_player = %d\n", t->healthPlayerPct);
+    fprintf(f, "health_ai = %d\n", t->healthAiPct);
     fprintf(f, "spark_car_hits = %d\n", t->sparksCarHits);
     fprintf(f, "; perf_floor = 1: no car accelerates or tops out below the best: the quickest car's torque for\n");
     fprintf(f, ";   its weight (car 18) and the fastest car's gearbox (car 19) are every car's minimum.\n");
@@ -296,6 +301,10 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->barsPct = clampi(atoi(val), 10, 100);
         } else if (SDL_strcasecmp(key, "mass_car1") == 0) {
             t->massCar1Pct = clampi(atoi(val), 50, 220);
+        } else if (SDL_strcasecmp(key, "health_player") == 0) {
+            t->healthPlayerPct = clampi(atoi(val), 25, 400);
+        } else if (SDL_strcasecmp(key, "health_ai") == 0) {
+            t->healthAiPct = clampi(atoi(val), 25, 400);
         } else if (SDL_strcasecmp(key, "wreck_near") == 0) {
             t->wreckNear = clampi(atoi(val), 0, 1000);
         } else if (SDL_strcasecmp(key, "player_yaw") == 0) {
@@ -580,6 +589,13 @@ int WM_LineRecording(void) {
 
 int WM_RacingLine(void) {
     return WM_Enabled() && sTuning.racingLine;
+}
+
+int WM_HealthPct(int human) {
+    if (!WM_Enabled()) {
+        return 100;
+    }
+    return human ? sTuning.healthPlayerPct : sTuning.healthAiPct;
 }
 
 int WM_WreckNear(void) {

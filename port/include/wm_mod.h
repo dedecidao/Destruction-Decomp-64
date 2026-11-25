@@ -74,6 +74,8 @@ typedef struct {
     int linePct;                /* their speed on it, % of the recorded */
     int packExtra;              /* computer cars added to the pack race's grid */
     int wreckNear;              /* metres from the player inside which a computer car may wreck */
+    int healthPlayerPct;        /* the player's starting health on top of durability, % */
+    int healthAiPct;            /* the computer cars' starting health on top of durability, % */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -142,6 +144,7 @@ int WM_RacingLine(void);
 int WM_LinePct(void);
 int WM_PackExtra(void);
 int WM_WreckNear(void);
+int WM_HealthPct(int human);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);
