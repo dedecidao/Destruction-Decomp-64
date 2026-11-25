@@ -75,6 +75,33 @@ Gfx *Camera_BuildProjection(Gfx *gfx, Cam *cam) {
             void WM_SpeedShake(f32 *, f32 *);
             Port_FreeCamEye(D_8012455C, &cam->eye, &cam->at, &eye);
             WM_SpeedShake(&eye.x, &at.x); /* the tremor at speed (wm_speedfx.c) */
+            {
+                /* DD64_CAMYAW=deg[,up] (testing: the texture map shots): the eye turned round
+                   the target by deg, raised by up */
+                static int on = -1;
+                static float yaw, up;
+                if (on < 0) {
+                    extern char *getenv(const char *);
+                    extern double atof(const char *);
+                    const char *e = getenv("DD64_CAMYAW");
+                    on = e != 0;
+                    if (on) {
+                        const char *c = e;
+                        yaw = (float)atof(e) * 0.017453292f;
+                        while (*c && *c != ',') {
+                            c++;
+                        }
+                        up = *c ? (float)atof(c + 1) : 0.0f;
+                    }
+                }
+                if (on) {
+                    extern float cosf(float), sinf(float);
+                    float dx = eye.x - at.x, dz = eye.z - at.z, cs = cosf(yaw), sn = sinf(yaw);
+                    eye.x = at.x + dx * cs - dz * sn;
+                    eye.z = at.z + dx * sn + dz * cs;
+                    eye.y += up;
+                }
+            }
             guLookAtF(look, eye.x, eye.y, eye.z, at.x, at.y, at.z, cam->up.x, cam->up.y, cam->up.z);
         }
 #else

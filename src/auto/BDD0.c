@@ -133,8 +133,21 @@ Gfx *Car_Draw(Car *car, Gfx *gfx, s32 unused, Cam *cam)
     if (car->xC && gDrawCars) {
         if (gGame->xC != 2) {
             Car_UpdateModelMatrices(car);
+#ifdef TARGET_PC
+            {
+                /* the texture pack: what follows is car <model>'s (gfx_pc.cpp, G_NOOP 0x4A) */
+                gfx->w0 = 0x004A0000;
+                gfx->w1 = (u32)(*(s32 *)((u8 *)car + 0x34) + 1);
+                gfx++;
+            }
+            #endif
             gfx = Model_Draw(car->x98, gfx);
             gfx = Car_DrawWheels(car, gfx);
+#ifdef TARGET_PC
+            gfx->w0 = 0x004A0000;
+            gfx->w1 = 0;
+            gfx++;
+#endif
             return gfx;
         }
         isLocal = 0;
@@ -167,10 +180,23 @@ Gfx *Car_Draw(Car *car, Gfx *gfx, s32 unused, Cam *cam)
             }
         }
     if (car->x30 != 0 || cam->xB4 || D_8012455C != car->x3C->x10) {
+#ifdef TARGET_PC
+            {
+                /* the texture pack: what follows is car <model>'s (gfx_pc.cpp, G_NOOP 0x4A) */
+                gfx->w0 = 0x004A0000;
+                gfx->w1 = (u32)(*(s32 *)((u8 *)car + 0x34) + 1);
+                gfx++;
+            }
+            #endif
             gfx = Model_Draw(car->x98, gfx);
             if (!car->xD) {
                 gfx = func_8000A894(car, Car_DrawWheels(car, gfx));
             }
+#ifdef TARGET_PC
+            gfx->w0 = 0x004A0000;
+            gfx->w1 = 0;
+            gfx++;
+#endif
             gfx = Gfx_SetViewport2(Debris_UpdateDraw(car, gfx), -2);
             gfx = DrawParticle(car, gfx, m18);
 #ifdef TARGET_PC

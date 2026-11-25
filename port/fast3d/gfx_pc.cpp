@@ -225,6 +225,7 @@ struct TextureCacheValue {
     uint32_t checksum;
     bool hd; /* a high-resolution font glyph (gfx_hd_atlas_register) was uploaded */
     uint32_t hd_gen; /* hd_atlas_gen when uploaded: the fonts registered since may change it */
+    uint64_t pack_hash; /* the texture pack's name for it (texpack_hash) */
 };
 
 static std::unordered_map<TextureCacheKey, TextureCacheValue, TextureCacheKeyHash> texture_cache;
@@ -815,6 +816,124 @@ static const uint8_t *hd_atlas_lookup(const uint8_t *addr, uint32_t w, uint32_t 
  * the texture already bound: the game loads a texture again for every few
  * triangles of the same material, and each flush is a draw call.
  */
+/*
+ * The texture pack (Data/textures/<hash>.png): a texture whose decoded texels (RGBA,
+ * after its palette) hash to <hash> is drawn from that image instead, at any
+ * resolution (its texture coordinates stay the original's, so a 4x image covers the
+ * same area). DD64_TEXDUMP=cars saves every texture a car's model draws, once each, as
+ * Data/texdump/car<NN>_<hash>_<w>x<h>.png (NN the car, 01-24, as the car-select screen
+ * numbers them): the files to repaint, named as the pack wants them.
+ */
+extern "C" const char *Port_BaseDir(void);
+static uint32_t texpack_tag; /* the car being drawn + 1 (G_NOOP 0x4A), 0 none */
+
+static uint64_t texpack_hash(const uint8_t *rgba, uint32_t w, uint32_t h) {
+    uint64_t x = 0xCBF29CE484222325ull ^ ((uint64_t)w << 32 | h);
+    const size_t n = (size_t)w * h * 4;
+    for (size_t i = 0; i < n; i++) {
+        x = (x ^ rgba[i]) * 0x100000001B3ull;
+    }
+    return x;
+}
+
+struct TexPackImage {
+    bool tried;
+    std::vector<uint8_t> rgba;
+    uint32_t w, h;
+};
+
+static const TexPackImage *texpack_find(uint64_t hash) {
+    static std::unordered_map<uint64_t, TexPackImage> images;
+    static int have = -1; /* is there a pack at all (Data/textures)? */
+    if (have < 0) {
+        char dir[1100];
+        snprintf(dir, sizeof(dir), "%sData/textures", Port_BaseDir());
+        SDL_PathInfo info;
+        have = SDL_GetPathInfo(dir, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+    }
+    if (!have) {
+        return NULL;
+    }
+    TexPackImage &img = images[hash];
+    if (!img.tried) {
+        char path[1100];
+        img.tried = true;
+        snprintf(path, sizeof(path), "%sData/textures/%016llx.png", Port_BaseDir(), (unsigned long long)hash);
+        SDL_Surface *s = SDL_LoadPNG(path);
+        if (s != NULL) {
+            SDL_Surface *c = SDL_ConvertSurface(s, SDL_PIXELFORMAT_ABGR8888);
+            SDL_DestroySurface(s);
+            if (c != NULL) {
+                img.w = (uint32_t)c->w;
+                img.h = (uint32_t)c->h;
+                img.rgba.resize((size_t)img.w * img.h * 4);
+                for (uint32_t r = 0; r < img.h; r++) {
+                    memcpy(&img.rgba[(size_t)r * img.w * 4], (const uint8_t *)c->pixels + (size_t)r * c->pitch, (size_t)img.w * 4);
+                }
+                SDL_DestroySurface(c);
+                SDL_Log("texpack: %016llx replaced (%ux%u)", (unsigned long long)hash, img.w, img.h);
+            }
+        }
+    }
+    return img.rgba.empty() ? NULL : &img;
+}
+
+static int texpack_dumping(void) {
+    static int mode = -1;
+    if (mode < 0) {
+        const char *e = getenv("DD64_TEXDUMP");
+        mode = e == NULL ? 0 : strcmp(e, "cars") == 0 ? 1 : strcmp(e, "all") == 0 ? 2 : 0;
+    }
+    return mode;
+}
+
+struct TexPackCopy {
+    std::vector<uint8_t> rgba;
+    uint32_t w, h;
+};
+static std::unordered_map<uint64_t, TexPackCopy> texpack_copies; /* (dumping) every texture seen */
+
+static void texpack_dump(uint64_t hash, const uint8_t *rgba, uint32_t w, uint32_t h) {
+    static std::unordered_map<uint64_t, bool> done;
+    if (!texpack_dumping()) {
+        return;
+    }
+    if (rgba != NULL && texpack_copies.find(hash) == texpack_copies.end()) {
+        TexPackCopy &c = texpack_copies[hash];
+        c.rgba.assign(rgba, rgba + (size_t)w * h * 4);
+        c.w = w;
+        c.h = h;
+    }
+    uint32_t tag = texpack_tag != 0 ? texpack_tag : texpack_dumping() == 2 ? 99 : 0; /* 99: not a car's */
+    if (tag == 0) {
+        return;
+    }
+    auto cp = texpack_copies.find(hash);
+    if (cp == texpack_copies.end()) {
+        return;
+    }
+    rgba = cp->second.rgba.data();
+    w = cp->second.w;
+    h = cp->second.h;
+    {
+        uint64_t k = hash ^ ((uint64_t)tag * 0x9E3779B97F4A7C15ull);
+        if (done[k]) {
+            return;
+        }
+        done[k] = true;
+    }
+    char path[1100];
+    snprintf(path, sizeof(path), "%sData/texdump", Port_BaseDir());
+    SDL_CreateDirectory(path);
+    snprintf(path, sizeof(path), "%sData/texdump/car%02u_%016llx_%ux%u.png", Port_BaseDir(), tag,
+             (unsigned long long)hash, w, h);
+    SDL_Surface *s = SDL_CreateSurfaceFrom((int)w, (int)h, SDL_PIXELFORMAT_ABGR8888, (void *)rgba, (int)w * 4);
+    if (s != NULL) {
+        SDL_SavePNG(s, path);
+        SDL_DestroySurface(s);
+    }
+}
+
 static void import_texture(int i, int tile) {
     uint8_t fmt = rdp.texture_tile[tile].fmt;
     uint8_t siz = rdp.texture_tile[tile].siz;
@@ -869,6 +988,9 @@ static void import_texture(int i, int tile) {
     if (it != texture_cache.end() && it->second.checksum == sum && it->second.hd_gen == gen &&
         it->second.texture_id == rendering_state.textures[i] &&
         it->second.width == bound_w[i] && it->second.height == bound_h[i]) {
+        if (texpack_dumping()) {
+            texpack_dump(it->second.pack_hash, NULL, 0, 0);
+        }
         return; /* the texture already bound: the batch goes on */
     }
     FLUSH("texture");
@@ -876,6 +998,9 @@ static void import_texture(int i, int tile) {
        here needs them set again (a new one is incomplete, so black, without) */
     rendering_state.cms[i] = rendering_state.cmt[i] = 0xFF;
     if (it != texture_cache.end() && it->second.checksum == sum && it->second.hd_gen == gen) {
+        if (texpack_dumping()) {
+            texpack_dump(it->second.pack_hash, NULL, 0, 0);
+        }
         gfx_rapi->select_texture(i, it->second.texture_id, false);
         rendering_state.textures[i] = it->second.texture_id;
         bound_w[i] = it->second.width;
@@ -914,7 +1039,20 @@ static void import_texture(int i, int tile) {
         memset(tex_upload_buffer, 0, 4);
     }
     uint32_t hd_w = 0, hd_h = 0;
+    uint64_t pack_hash = 0;
     const uint8_t *hd = hd_atlases.empty() ? NULL : hd_atlas_lookup(addr, w, h, tex_upload_buffer, &hd_w, &hd_h);
+    if (hd == NULL) {
+        /* the texture pack (Data/textures/<hash>.png), and its dump */
+        uint64_t th = texpack_hash(tex_upload_buffer, w, h);
+        pack_hash = th;
+        texpack_dump(th, tex_upload_buffer, w, h);
+        const TexPackImage *img = texpack_find(th);
+        if (img != NULL) {
+            hd = img->rgba.data();
+            hd_w = img->w;
+            hd_h = img->h;
+        }
+    }
     if (gfx_edge_fill) {
         fill_clear_texels(tex_upload_buffer, w, h);
     }
@@ -940,7 +1078,7 @@ static void import_texture(int i, int tile) {
             }
         }
     }
-    texture_cache[key] = { id, w, h, sum, hd != NULL, gen };
+    texture_cache[key] = { id, w, h, sum, hd != NULL, gen, pack_hash };
     rendering_state.textures[i] = id;
     bound_w[i] = w;
     bound_h[i] = h;
@@ -2632,6 +2770,9 @@ static void gfx_run_dl(const uint8_t *cmd) {
                         hud_dy = dy;
                         rdp.viewport_or_scissor_changed = true;
                     }
+                } else if ((w0 & 0x00FF0000) == 0x004A0000) {
+                    /* the texture pack: car <w1 - 1>'s model is being drawn (0: none) */
+                    texpack_tag = w1;
                 } else if ((w0 & 0x00FF0000) == 0x00490000) {
                     /* the HUD group's scale, w1 / 4096 (sent before its offset) */
                     float s = w1 > 0 ? (int32_t)w1 / 4096.0f : 1.0f;
