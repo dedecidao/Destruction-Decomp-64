@@ -424,8 +424,9 @@ Car *Car_Create(CarStats *s) {
         int WM_DurabilityPct(void);
         const u32 *WM_CarRecord(int id);
         int pct = WM_DurabilityPct();
+        int WM_CarStatsSane(const void *);
         const u32 *baja = pct > 0 ? WM_CarRecord(12) : NULL;
-        if (baja != NULL) {
+        if (baja != NULL && WM_CarStatsSane(baja) && WM_CarStatsSane(s)) { /* only on sane records */
             car->x10 = ((s32)baja[2] + (car->x10 - s->x8)) * pct / 100;
             if (car->x10 < 1) {
                 car->x10 = 1;

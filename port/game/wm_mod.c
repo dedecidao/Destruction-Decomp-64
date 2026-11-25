@@ -513,8 +513,20 @@ static int wmIsHumanCar(void *carPtr);
 #define WM_HOOD_MEDIUM 50
 #define WM_HOOD_HEAVY 21
 
+/* The smoke follows the health as a share of a full car's: with [cars] durability every
+   car starts on that % of the Baja Buggy's, so the stages scale with it (at 50, light
+   smoke from 40, black near 0), or every car would smoke from the start */
+static s32 wmSmokeHp(s32 hp) {
+    int pct = WM_DurabilityPct();
+    return pct > 0 ? hp * 100 / pct : hp;
+}
+
 int WM_HoodSmokeStartHp(void) {
-    return WM_Enabled() ? WM_HOOD_LIGHT : WM_HOOD_HEAVY;
+    int pct = WM_DurabilityPct();
+    if (!WM_Enabled()) {
+        return WM_HOOD_HEAVY;
+    }
+    return pct > 0 ? (WM_HOOD_LIGHT * pct + 99) / 100 : WM_HOOD_LIGHT;
 }
 
 int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
@@ -526,7 +538,7 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
     WMParticle *pt;
     Vec3f p, v, acc;
     f32 spd, spdNorm, r1, r2, backPush, latVel, scale, spread, rise;
-    s32 life, hp = car->health, every, maxAlpha, alphaStep;
+    s32 life, hp = wmSmokeHp(car->health), every, maxAlpha, alphaStep;
     u8 *tick;
     int human;
 

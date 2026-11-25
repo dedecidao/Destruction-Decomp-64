@@ -32,9 +32,30 @@ const u32 *WM_CarRecord(int id) {
         for (i = 0; i < WM_CAR_WORDS; i++) {
             sRec[id][i] = buf[i];
         }
+        /* The record's model (word 1) is the car itself: if it reads byte-swapped, the
+           words came through unconverted (big-endian, as in the ROM): swap them here */
+        if (sRec[id][1] != (u32)id && __builtin_bswap32(sRec[id][1]) == (u32)id) {
+            for (i = 0; i < WM_CAR_WORDS; i++) {
+                sRec[id][i] = __builtin_bswap32(sRec[id][i]);
+            }
+            Port_Log("cars: car %d's record read big-endian, swapped", id);
+        }
         sLoaded[id] = 1;
     }
     return sRec[id];
+}
+
+/* Whether a CarStats block reads sanely (host order): model 0-23, health 1-300, mass
+   500-2000 kg, torque 1-2000. Anything else and the Wrecked Metal car changes keep off. */
+int WM_CarStatsSane(const void *stats) {
+    const u32 *w = (const u32 *)stats;
+    f32 mass, torque;
+    u32 m = w[1];
+    s32 hp = (s32)w[2];
+    u32 wm = w[0x78 / 4], wt = w[0x30 / 4]; /* word loads: converted where the game data needs it */
+    memcpy(&mass, &wm, 4);
+    memcpy(&torque, &wt, 4);
+    return m < 24 && hp >= 1 && hp <= 300 && mass >= 500.0f && mass <= 2000.0f && torque >= 1.0f && torque <= 2000.0f;
 }
 
 /* DD64_DUMPCARS=file (testing): every car's record, word by word, as hex, int and float */
@@ -211,7 +232,11 @@ static void bestCars(s32 *quick, s32 *fast) {
         s32 i;
         for (i = 0; i < 24; i++) {
             const u32 *r = WM_CarRecord(i);
-            f32 a = ST_F(r, 0x30) / ST_F(r, 0x78);
+            f32 a;
+            if (!WM_CarStatsSane(r)) {
+                continue;
+            }
+            a = ST_F(r, 0x30) / ST_F(r, 0x78);
             f32 g = ST_F(r, 0x54) * ST_F(r, 0x58);
             if (a > bq) {
                 bq = a;
@@ -240,8 +265,19 @@ void WM_CarApplyFloor(void *stats) {
         return;
     }
     bestCars(&q, &f);
+    if (q < 0 || f < 0) {
+        return;
+    }
     rq = WM_CarRecord(q);
     rf = WM_CarRecord(f);
+    if (!WM_CarStatsSane(stats) || !WM_CarStatsSane(rq) || !WM_CarStatsSane(rf)) {
+        static int warned;
+        if (!warned++) {
+            Port_Log("cars: perf floor off, a car record reads wrong (model %u health %d)", ((const u32 *)stats)[1],
+                     (int)((const s32 *)stats)[2]);
+        }
+        return;
+    }
     mass = ST_F(stats, 0x78);
     if (ST_F(stats, 0x2C) < ST_F(rq, 0x2C) / ST_F(rq, 0x78) * mass) {
         ST_F(stats, 0x2C) = ST_F(rq, 0x2C) / ST_F(rq, 0x78) * mass;
