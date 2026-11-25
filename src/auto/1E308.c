@@ -410,6 +410,22 @@ Car *Car_Create(CarStats *s) {
             car->x10 += e;
         }
     }
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal ([cars] durability): every car's health a share of the Baja Buggy's
+           (car type 12, its record's health), with this race's own bonus (above) */
+        int WM_DurabilityPct(void);
+        const u32 *WM_CarRecord(int id);
+        int pct = WM_DurabilityPct();
+        const u32 *baja = pct > 0 ? WM_CarRecord(12) : NULL;
+        if (baja != NULL) {
+            car->x10 = ((s32)baja[2] + (car->x10 - s->x8)) * pct / 100;
+            if (car->x10 < 1) {
+                car->x10 = 1;
+            }
+        }
+    }
+#endif
     car->x58 = 0;
     car->x5C = 0;
     car->xA64 = 0;

@@ -115,5 +115,15 @@ void Car_ApplyDamage(Car *c, s32 idx, f32 dmg, s32 type) {
     Hud_FlashDamageZone(gUi, c, amount, side);
     if (c->x10 < 0) c->x10 = 0;
     if (c->parts[idx].x8 < 0) c->parts[idx].x8 = 0;
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal: this damage (a wall, a wreck) has no player behind it, so a
+           computer car is left on 1 (port/game/wm_cars.c) */
+        s32 WM_AiKeepAlive(void *victim, void *attacker);
+        if (c->x10 <= 0 && WM_AiKeepAlive(c, NULL)) {
+            c->x10 = 1;
+        }
+    }
+#endif
     Car_CheckWrecked(c, idx);
 }

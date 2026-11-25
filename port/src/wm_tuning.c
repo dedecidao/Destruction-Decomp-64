@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 10 /* 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 11 /* 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -109,6 +109,9 @@ static void setDefaults(WMTuning *t) {
     t->aiMode = WM_AI_CLASSIC;
     t->aiDirector = 1;
     t->aiFixBugs = 1;
+
+    t->durabilityPct = 50;
+    t->sparksCarHits = 0;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -201,6 +204,12 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "mode = %d\n", t->aiMode);
     fprintf(f, "director = %d\n", t->aiDirector);
     fprintf(f, "fix_bugs = %d\n", t->aiFixBugs);
+    fprintf(f, "\n[cars]\n");
+    fprintf(f, "; durability = every car's health as a %% of the Baja Buggy's (car 13), the race's bonus\n");
+    fprintf(f, ";   for difficulty and mode included (50 = half); 0 = each car its own, as the N64.\n");
+    fprintf(f, "; spark_car_hits = 1: sparks where two cars hit (the sparks off walls stay either way).\n");
+    fprintf(f, "durability = %d\n", t->durabilityPct);
+    fprintf(f, "spark_car_hits = %d\n", t->sparksCarHits);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -244,6 +253,14 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->lightsAllTracks = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "ground") == 0) {
             t->lightsGround = atoi(val) != 0;
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "cars") == 0) {
+        if (SDL_strcasecmp(key, "durability") == 0) {
+            t->durabilityPct = clampi(atoi(val), 0, 300);
+        } else if (SDL_strcasecmp(key, "spark_car_hits") == 0) {
+            t->sparksCarHits = atoi(val) != 0;
         }
         return;
     }
@@ -489,6 +506,14 @@ int WM_AiMode(void) {
 
 int WM_AiDirectorOn(void) {
     return WM_Enabled() && sTuning.aiDirector;
+}
+
+int WM_DurabilityPct(void) {
+    return WM_Enabled() ? sTuning.durabilityPct : 0;
+}
+
+int WM_SparksCarHits(void) {
+    return WM_Enabled() && sTuning.sparksCarHits;
 }
 
 int WM_AiFixBugs(void) {

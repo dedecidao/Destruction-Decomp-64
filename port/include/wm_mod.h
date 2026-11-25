@@ -62,6 +62,9 @@ typedef struct {
     int aiMode;                 /* WM_AI_CLASSIC, WM_AI_PACK_RACE, WM_AI_HEAD_ON */
     int aiDirector;             /* the race director in the pack and head-on modes */
     int aiFixBugs;              /* the two AI aiming bugs fixed (docs/bugs.md 19, 20) */
+    /* Cars ([cars] in wm_tuning.ini) */
+    int durabilityPct;          /* every car's health, % of the Baja Buggy's (0 = each its own) */
+    int sparksCarHits;          /* sparks where two cars hit (the wall sparks stay) */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -119,6 +122,8 @@ int WM_CanInitAiSkid(void);
 int WM_AiMode(void);
 int WM_AiDirectorOn(void);
 int WM_AiFixBugs(void);
+int WM_DurabilityPct(void);
+int WM_SparksCarHits(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);
