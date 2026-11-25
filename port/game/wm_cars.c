@@ -115,9 +115,11 @@ void WM_LogGear(void *car, f32 speed) {
         }
     }
     if (on < 0) {
-        on = getenv("DD64_GEARLOG") != NULL;
+        const char *e = getenv("DD64_GEARLOG");
+        on = e == NULL ? 0 : (e[0] >= '0' && e[0] <= '9' && atoi(e) > 1) ? atoi(e) : 1;
     }
-    if (!on || *(s32 *)(c + 0x30) != 0) { /* the player's car only (Car_Create) */
+    /* the player's car (Car_Create), or with DD64_GEARLOG=n (n > 1) the car of model n - 2 */
+    if (!on || (on == 1 ? *(s32 *)(c + 0x30) != 0 : *(s32 *)(c + 0x34) != on - 2)) {
         return;
     }
     gear = *(s32 *)(c + 0xA58);

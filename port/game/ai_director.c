@@ -11,8 +11,7 @@
  *   - cars coming the other way (head-on) keep a steady 105%, and close to the player
  *     their driver turns to its most tenacious and searching;
  *   - the difficulty (D_800958B0) sets a base pace: 0.98, 1.02, 1.06, 1.10 (the pack
- *     race: 1.04, 1.08, 1.12, 1.16, its own harder rules below, and its computer cars
- *     a 12% longer top gear, WM_AiPackCar);
+ *     race: 1.04, 1.08, 1.12, 1.16, its own harder rules below: no track limit at all, and its computer cars a 20% longer top gear, WM_AiPackCar);
  *   - with [cars] perf_floor every computer car's limits rise with its faster gearbox
  *     (WM_CarPaceScale), in every mode, the classic one too.
  *
@@ -57,7 +56,7 @@ typedef struct {
     void *car;
     f32 speed, throttle;
     s32 tenacity, search; /* the driver's own, while the director has raised them */
-    u8 raised, personal;
+    u8 raised, personal, behind;
 } WMDirCar;
 
 static WMDirCar sCars[RACE_CARS];
@@ -65,6 +64,7 @@ static s32 sCount;
 static void *sRace, *sPlayer;
 static u64 sLast;
 static s32 sMode = -1;
+static f32 sPlayerSpeed; /* m/s, at the last pass */
 
 /* the pointer -> slot table, so a car's lookup is not a search */
 #define HASH_SIZE 256
@@ -188,6 +188,10 @@ static void update(void) {
         return;
     }
     pp = Car_GetPos(player);
+    {
+        f32 Car_GetSpeed(void *);
+        sPlayerSpeed = Car_GetSpeed(player);
+    }
     pdir = CAR_S32(player, 0x58);
     pprog = progress(player, ns);
     base = kBase[D_800958B0 & 3];
@@ -238,18 +242,20 @@ static void update(void) {
                screen and moved along the track: double pace, all but a teleport back to the
                pack. */
             s32 behind = ahead(progress(c, ns), pprog, ns) < 0;
+            d->behind = (u8)behind;
             if (!behind) {
-                speed = 1.0f;
-                throttle = 1.05f;
+                /* ahead: no track limit either (they hold the lead on their own speed) */
+                speed = 4.0f;
+                throttle = 1.2f;
             } else if (((u8 *)c)[0xBAC]) {
-                speed = 2.0f;
-                throttle = 1.35f;
-            } else if (d2 < nearM * nearM) {
-                speed = 1.12f;
-                throttle = 1.25f;
+                speed = 2.5f;
+                throttle = 1.5f;
             } else {
-                speed = 1.25f;
-                throttle = 1.35f;
+                /* behind, on screen or not: no track limit at all (x4 never reached), a
+                   half again stronger engine and its longer top gear: faster than the
+                   player even at the player's top speed */
+                speed = 4.0f;
+                throttle = 1.5f;
             }
         } else if (d2 >= nearM * nearM) {
             f32 m = __builtin_sqrtf(d2);
@@ -296,10 +302,10 @@ static void tick(void) {
 f32 WM_CarPaceScale(void *car);
 
 /* The pack race's computer cars (Car_Create, once the car knows it is one): a final
-   ratio 12% longer, so their top speed is above the player's, and the engine's torque
+   ratio 20% longer, so their top speed is a quarter above the player's, and the engine's torque
    curve (Car+0x1A0..0x1AC, Car_GetDriveTorque) raised to keep their pull at the wheels.
    The track limits rise with it (PACK_GEAR in WM_AiSpeedScale). */
-#define PACK_GEAR 0.88f
+#define PACK_GEAR 0.80f
 void WM_AiPackCar(void *car) {
     u8 *c = (u8 *)car;
     s32 i;
@@ -355,8 +361,33 @@ void WM_AiLog(void) {
         if (c == NULL) {
             continue;
         }
-        Port_Log("ailog: t%u car %d ai %d dir %d seg %d lap %d prog %d kin %d hp %d speed %.2f throttle %.2f", n, i,
+        f32 Car_GetSpeed(void *);
+        Port_Log("ailog: t%u car %d ai %d dir %d seg %d lap %d prog %d kin %d hp %d speed %.2f throttle %.2f kmh %.0f", n, i,
                  CAR_S32(c, 0x30), CAR_S32(c, 0x58), CAR_S32(c, 0x28), CAR_S32(c, 0x88), progress(c, ns),
-                 ((u8 *)c)[0xBAC], CAR_S32(c, 0x10), (double)sCars[i].speed, (double)sCars[i].throttle);
+                 ((u8 *)c)[0xBAC], CAR_S32(c, 0x10), (double)sCars[i].speed, (double)sCars[i].throttle,
+                 (double)(Car_GetSpeed(c) * 3.6f));
+    }
+}
+
+/* The pack race's turbo (Ai_Steer, each frame of a computer car driven by physics):
+   behind the player and slower than the player's speed + 12% (+6 m/s), the car is pushed
+   on, its velocity (the body's current and previous, Car+0x224 and +0x29C) up 0.6% a
+   frame, about a third more a second: whatever its engine, a car behind always closes
+   in and passes */
+void WM_AiTurbo(void *car) {
+    f32 Car_GetSpeed(void *);
+    WMDirCar *d;
+    f32 v, k = 1.006f;
+    s32 i;
+    if (sMode != WM_AI_PACK_RACE || !active() || (d = find(car)) == NULL || !d->behind) {
+        return;
+    }
+    v = Car_GetSpeed(car);
+    if (v < 5.0f || v > sPlayerSpeed * 1.12f + 6.0f) {
+        return;
+    }
+    for (i = 0; i < 3; i++) {
+        ((f32 *)((u8 *)car + 0x224))[i] *= k;
+        ((f32 *)((u8 *)car + 0x29C))[i] *= k;
     }
 }

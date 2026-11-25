@@ -42,6 +42,12 @@ void Ai_Steer(Car *car) {
     s32 lim;
     Input *in;
 
+#ifdef TARGET_PC
+    {
+        void WM_AiTurbo(void *); /* the pack race's turbo (ai_director.c) */
+        WM_AiTurbo(car);
+    }
+#endif
     pos = Car_GetPos(car);
     fwd = func_8001FC08(car);
     accel = 1;
