@@ -4,6 +4,7 @@
  * the car-select screen's stat bars.
  */
 #include "common.h"
+#include "race_cars.h"
 #include "wm_mod.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -138,8 +139,33 @@ void WM_LogGear(void *car, f32 speed) {
 
 /* ---- Wrecked Metal: wrecks and who may wreck a computer car ---- */
 
-/* A computer car (Car+0x30 != 0) is kept on 1 health unless the player (Car+0x30 == 0)
-   dealt the blow: it then wrecks only on a hit from the player. Play Fidelity: never. */
+/* A computer car (Car+0x30 != 0) is kept on 1 health unless it is near the player:
+   within [cars] wreck_near metres (100: half the 200 m inside which cars are fully
+   simulated), or the player dealt the blow. Far off, it never wrecks. Play Fidelity: never. */
+static int wmNearPlayer(void *car) {
+    typedef struct { f32 x, y, z; } V3;
+    V3 Car_GetPos(void *);
+    extern u8 *gGame;
+    u8 *race = gGame != NULL ? *(u8 **)(gGame + 0x1100) : NULL;
+    s32 i, n;
+    f32 r = (f32)WM_WreckNear();
+    if (race == NULL || r <= 0.0f) {
+        return 0;
+    }
+    n = *(s32 *)(race + 0x74 + RACE_CARS * 4);
+    for (i = 0; i < n && i < RACE_CARS; i++) {
+        void *c = ((void **)(race + 0x74))[i];
+        if (c != NULL && *(s32 *)((u8 *)c + 0x30) == 0) {
+            V3 a = Car_GetPos(car), b = Car_GetPos(c);
+            f32 dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+            if (dx * dx + dy * dy + dz * dz < r * r) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 s32 WM_AiKeepAlive(void *victim, void *attacker) {
     if (!WM_Enabled() || victim == NULL || *(s32 *)((u8 *)victim + 0x30) == 0) {
         return 0;
@@ -147,13 +173,13 @@ s32 WM_AiKeepAlive(void *victim, void *attacker) {
     if (getenv("DD64_WRECKANY") != NULL) {
         return 0; /* testing: any car may finish a computer car, as on the N64 */
     }
-    if (attacker == NULL || *(s32 *)((u8 *)attacker + 0x30) != 0) {
+    if ((attacker == NULL || *(s32 *)((u8 *)attacker + 0x30) != 0) && !wmNearPlayer(victim)) {
         static int log = -1, nlog;
         if (log < 0) {
             log = getenv("DD64_WRECKLOG") != NULL;
         }
         if (log && nlog++ < 200) {
-            Port_Log("wrecklog: car %p model %d kept on 1 (%s)", victim, *(s32 *)((u8 *)victim + 0x34), attacker ? "computer car" : "wall or wreck");
+            Port_Log("wrecklog: car %p model %d kept on 1 (%s, far from the player)", victim, *(s32 *)((u8 *)victim + 0x34), attacker ? "computer car" : "wall or wreck");
         }
         return 1;
     }

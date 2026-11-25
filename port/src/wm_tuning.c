@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 15 /* 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 16 /* 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -83,7 +83,7 @@ static void setDefaults(WMTuning *t) {
     t->snowAlpha = 142;
     t->snowLift = 0.06f;
 
-    t->scoreFxEnabled = 1;
+    t->scoreFxEnabled = 0; /* the score's count-up and sounds: off for now (Andre, v16) */
     t->scoreFxScale = 2.35f;
     t->scoreFxAudio = 1;
     t->scoreFxVolume = 1.45f;
@@ -113,6 +113,7 @@ static void setDefaults(WMTuning *t) {
     t->racingLine = 1;
     t->linePct = 105;
     t->packExtra = 4;
+    t->wreckNear = 100;
 
     t->durabilityPct = 50;
     t->sparksCarHits = 0;
@@ -235,6 +236,9 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; player_yaw = how hard the player's car is to spin in a crash, %% of the car's own (yaw inertia).\n");
     fprintf(f, "mass_car1 = %d\n", t->massCar1Pct);
     fprintf(f, "player_yaw = %d\n", t->playerYawPct);
+    fprintf(f, "; wreck_near = a computer car can wreck only within this many metres of you (100 = half the\n");
+    fprintf(f, ";   200 m inside which cars are fully simulated); 0 = only from your own hits.\n");
+    fprintf(f, "wreck_near = %d\n", t->wreckNear);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -292,6 +296,8 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->barsPct = clampi(atoi(val), 10, 100);
         } else if (SDL_strcasecmp(key, "mass_car1") == 0) {
             t->massCar1Pct = clampi(atoi(val), 50, 220);
+        } else if (SDL_strcasecmp(key, "wreck_near") == 0) {
+            t->wreckNear = clampi(atoi(val), 0, 1000);
         } else if (SDL_strcasecmp(key, "player_yaw") == 0) {
             t->playerYawPct = clampi(atoi(val), 50, 500);
         }
@@ -474,6 +480,9 @@ void WM_ReloadTuning(void) {
         if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
         }
+        if (sTuning.tuningVersion <= 15) {
+            sTuning.scoreFxEnabled = 0; /* the score's animation off for now */
+        }
         if (sTuning.tuningVersion == 13) {
             sTuning.massCar1Pct = 100; /* car 1's extra weight withdrawn */
         }
@@ -571,6 +580,10 @@ int WM_LineRecording(void) {
 
 int WM_RacingLine(void) {
     return WM_Enabled() && sTuning.racingLine;
+}
+
+int WM_WreckNear(void) {
+    return sTuning.wreckNear;
 }
 
 int WM_PackExtra(void) {
