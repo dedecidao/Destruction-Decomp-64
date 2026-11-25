@@ -10,7 +10,9 @@
  *   - further ahead, a leader's limits and engine ease off a little, to 94% and 92%;
  *   - cars coming the other way (head-on) keep a steady 105%, and close to the player
  *     their driver turns to its most tenacious and searching;
- *   - the difficulty (D_800958B0) sets a base pace: 0.98, 1.02, 1.06, 1.10;
+ *   - the difficulty (D_800958B0) sets a base pace: 0.98, 1.02, 1.06, 1.10 (the pack
+ *     race: 1.04, 1.08, 1.12, 1.16, its own harder rules below, and its computer cars
+ *     a 12% longer top gear, WM_AiPackCar);
  *   - with [cars] perf_floor every computer car's limits rise with its faster gearbox
  *     (WM_CarPaceScale), in every mode, the classic one too.
  *
@@ -189,6 +191,10 @@ static void update(void) {
     pdir = CAR_S32(player, 0x58);
     pprog = progress(player, ns);
     base = kBase[D_800958B0 & 3];
+    if (sMode == WM_AI_PACK_RACE) {
+        static const f32 kPack[4] = { 1.04f, 1.08f, 1.12f, 1.16f }; /* the pack race: a harder field */
+        base = kPack[D_800958B0 & 3];
+    }
     nearM = sMode == WM_AI_PACK_RACE ? NEAR_PACK_M : NEAR_M;
 
     for (i = 0; i < n; i++) {
@@ -224,6 +230,26 @@ static void update(void) {
                     AI_S32(c, 0x58) = d->search;
                     d->raised = 0;
                 }
+            }
+        } else if (sMode == WM_AI_PACK_RACE) {
+            /* The pack race is a fight: nobody eases off ahead of the player, and anyone
+               behind comes at them hard. Close (on screen): +12% limits and +25% engine
+               to pass; further back while still driven by physics: +25% / +35%; once off
+               screen and moved along the track: double pace, all but a teleport back to the
+               pack. */
+            s32 behind = ahead(progress(c, ns), pprog, ns) < 0;
+            if (!behind) {
+                speed = 1.0f;
+                throttle = 1.05f;
+            } else if (((u8 *)c)[0xBAC]) {
+                speed = 2.0f;
+                throttle = 1.35f;
+            } else if (d2 < nearM * nearM) {
+                speed = 1.12f;
+                throttle = 1.25f;
+            } else {
+                speed = 1.25f;
+                throttle = 1.35f;
             }
         } else if (d2 >= nearM * nearM) {
             f32 m = __builtin_sqrtf(d2);
@@ -269,10 +295,30 @@ static void tick(void) {
 
 f32 WM_CarPaceScale(void *car);
 
+/* The pack race's computer cars (Car_Create, once the car knows it is one): a final
+   ratio 12% longer, so their top speed is above the player's, and the engine's torque
+   curve (Car+0x1A0..0x1AC, Car_GetDriveTorque) raised to keep their pull at the wheels.
+   The track limits rise with it (PACK_GEAR in WM_AiSpeedScale). */
+#define PACK_GEAR 0.88f
+void WM_AiPackCar(void *car) {
+    u8 *c = (u8 *)car;
+    s32 i;
+    if (car == NULL || WM_AiMode() != WM_AI_PACK_RACE || CAR_S32(car, 0x30) == 0) {
+        return;
+    }
+    *(f32 *)(c + 0x1CC) *= PACK_GEAR;
+    for (i = 0; i < 4; i++) {
+        *(f32 *)(c + 0x1A0 + i * 4) /= PACK_GEAR;
+    }
+}
+
 f32 WM_AiSpeedScale(void *car) {
     WMDirCar *d;
     /* the floor's faster gearbox raises the track's limits for this car alike, in every mode */
     f32 pace = WM_CarPaceScale(car);
+    if (WM_AiMode() == WM_AI_PACK_RACE) {
+        pace /= PACK_GEAR;
+    }
     if (!active()) {
         return pace;
     }

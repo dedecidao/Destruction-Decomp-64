@@ -440,6 +440,12 @@ Car *Car_Create(CarStats *s) {
         }
     }
 #endif
+#ifdef TARGET_PC
+    {
+        void WM_AiPackCar(void *car); /* the pack race's computer cars (ai_director.c) */
+        WM_AiPackCar(car);
+    }
+#endif
     car->x58 = 0;
     car->x5C = 0;
     car->xA64 = 0;
