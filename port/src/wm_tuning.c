@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 20 /* 20: [speedfx]; 19: wall_wreck_mph 0 (any lethal hit); 18: racing_line off, [cars] wall_wreck_mph; 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 21 /* 21: [speedfx] lines, wind; 20: [speedfx]; 19: wall_wreck_mph 0 (any lethal hit); 18: racing_line off, [cars] wall_wreck_mph; 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -119,6 +119,8 @@ static void setDefaults(WMTuning *t) {
     t->speedFx = 1;
     t->speedFovPct = 26;
     t->speedShakePct = 100;
+    t->speedLines = 1;
+    t->speedWindPct = 100;
     t->healthAiPct = 120;
 
     t->durabilityPct = 50;
@@ -258,6 +260,10 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "enabled = %d\n", t->speedFx);
     fprintf(f, "fov_pct = %d\n", t->speedFovPct);
     fprintf(f, "shake_pct = %d\n", t->speedShakePct);
+    fprintf(f, "; lines = 1: faint streaks rushing out at the screen's sides above 60%% of the top speed.\n");
+    fprintf(f, "; wind = the wind's loudness at speed, %% (0 = off).\n");
+    fprintf(f, "lines = %d\n", t->speedLines);
+    fprintf(f, "wind = %d\n", t->speedWindPct);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -311,6 +317,10 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->speedFovPct = clampi(atoi(val), 0, 60);
         } else if (SDL_strcasecmp(key, "shake_pct") == 0) {
             t->speedShakePct = clampi(atoi(val), 0, 300);
+        } else if (SDL_strcasecmp(key, "lines") == 0) {
+            t->speedLines = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "wind") == 0) {
+            t->speedWindPct = clampi(atoi(val), 0, 300);
         }
         return;
     }

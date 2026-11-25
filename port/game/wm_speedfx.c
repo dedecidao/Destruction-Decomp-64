@@ -72,6 +72,10 @@ void WM_SpeedCam(void *car, f32 dt, f32 *dist, f32 *height) {
     sShake = clamp01((s - 0.70f) / 0.30f) * (sOffroad ? 2.0f : 1.0f);
     sKick *= expf(-dt * 7.0f);
     sTime += dt;
+    {
+        void WM_WindSet(float); /* the wind (port/src/wm_wind.c) */
+        WM_WindSet(clamp01(s));
+    }
 }
 
 /* Camera_BuildProjection: the field of view, and the shake added to the eye and target */

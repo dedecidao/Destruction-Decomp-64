@@ -1542,6 +1542,54 @@ static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     return cur;
 }
 
+/* [speedfx] lines: faint white streaks rushing out at the screen's sides above 60% of
+   the top speed, 16 of them, each a 1-pixel-high fill rect sliding outward and
+   lengthening, respawned near the middle third: the old comic-book speed lines, on the
+   HUD's own fill rects (no framebuffer copy, no texture) */
+static WMGfx *wmSpeedLines(WMGfx *g) {
+    f32 WM_SpeedNorm(void);
+    static f32 sx[16], sl[16];
+    static s16 sy[16];
+    static u8 sOn;
+    f32 s = WM_SpeedNorm(), k;
+    s32 i;
+    if (!WM_GetTuning()->speedLines || s < 0.60f) {
+        sOn = 0;
+        return g;
+    }
+    k = (s - 0.60f) / 0.40f; /* 0-1 */
+    if (!sOn) {
+        for (i = 0; i < 16; i++) {
+            sx[i] = 999.0f; /* all due a respawn */
+        }
+        sOn = 1;
+    }
+    g = wmBeginRects(g);
+    for (i = 0; i < 16; i++) {
+        s32 left = i & 1, x0, x1;
+        u32 a;
+        if (sx[i] > 170.0f) {
+            /* respawn: out from 50-110 px off the middle, at any height but the HUD's */
+            sx[i] = 50.0f + (f32)(wmRand() % 60);
+            sl[i] = 6.0f + (f32)(wmRand() % 10);
+            sy[i] = (s16)(40 + wmRand() % 160);
+        }
+        sx[i] += 9.0f + 10.0f * k + (f32)(i % 3);
+        sl[i] += 2.5f + 3.0f * k;
+        a = (u32)(0x18 + (s32)(0x24 * k) * (s32)(sx[i] < 150.0f ? 1 : 0));
+        x0 = left ? 160 - (s32)(sx[i] + sl[i]) : 160 + (s32)sx[i];
+        x1 = x0 + (s32)sl[i];
+        if (x0 < 0) {
+            x0 = 0;
+        }
+        if (x1 > 320) {
+            x1 = 320;
+        }
+        g = wmRect(g, x0, sy[i], x1, sy[i] + 1, 0xFFFFFF00u | a);
+    }
+    return g;
+}
+
 void *WM_HudDraw(void *gfxPtr) {
     static f32 sSmoothT, sSmoothB;
     static u32 sFrame;
@@ -1558,6 +1606,10 @@ void *WM_HudDraw(void *gfxPtr) {
         /* the touch controls hide the up/down arrows during a race, pause aside (video.c) */
         void Port_NoteDriving(int driving);
         Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL);
+    }
+    if (WM_Enabled() && Port_GameDrawsWorld() && gGame != NULL && D_800D31CC == 1 && gGame->x10FC == 0x1C) {
+        g = wmSpeedLines(g); /* [speedfx] lines, under the HUD */
+        gfxPtr = g;
     }
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;

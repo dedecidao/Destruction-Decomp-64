@@ -81,6 +81,8 @@ typedef struct {
     int speedFx;                /* the chase camera's FOV, spring and shake */
     int speedFovPct;            /* how much wider the view at the top speed, % */
     int speedShakePct;          /* the shake's strength, % */
+    int speedLines;             /* streaks at the screen's sides at speed */
+    int speedWindPct;           /* the wind's loudness at speed, % (0 off) */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
