@@ -54,7 +54,17 @@ void Camera_Update(Cam *cam, f32 dt) {
         Camera_SetChaseFromCar(cam, car, lo, lo, y, w, h);
         break;
     case 1:
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal: the camera's spring and height with speed (wm_speedfx.c) */
+        void WM_SpeedCam(void *, f32, f32 *, f32 *);
+        f32 d = 6.0f, hh = 2.0f;
+        WM_SpeedCam(car, dt, &d, &hh);
+        Camera_UpdateChase2(cam, car, 0.0f, d, hh, 0.0f, 2.0f, 5.0f, dt);
+    }
+#else
         Camera_UpdateChase2(cam, car, 0.0f, 6.0f, 2.0f, 0.0f, 2.0f, 5.0f, dt);
+#endif
         break;
     case 2:
         z = 8.0f;
@@ -65,6 +75,12 @@ void Camera_Update(Cam *cam, f32 dt) {
         if (D_800D31CC >= 3) {
             z = 12.0f;
         }
+#ifdef TARGET_PC
+        {
+            void WM_SpeedCam(void *, f32, f32 *, f32 *);
+            WM_SpeedCam(car, dt, &z, &p);
+        }
+#endif
         Camera_UpdateChase2(cam, car, k, z, p, k, q, r, dt);
         break;
     case 7:

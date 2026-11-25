@@ -42,7 +42,16 @@ Gfx *Camera_BuildProjection(Gfx *gfx, Cam *cam) {
     MtxF ident;
     u16 norm;
 
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal: the view widens with speed (wm_speedfx.c) */
+        f32 WM_SpeedFov(f32);
+        guPerspectiveF(proj, &norm, cam->x1C == 2 ? WM_SpeedFov(cam->fovy) : cam->fovy, cam->aspect, cam->zNear, cam->zFar,
+                       cam->scale);
+    }
+#else
     guPerspectiveF(proj, &norm, cam->fovy, cam->aspect, cam->zNear, cam->zFar, cam->scale);
+#endif
     switch (cam->x1C) {
     case 1:
         guMtxCatF(cam->x20, proj, proj);
@@ -62,8 +71,11 @@ Gfx *Camera_BuildProjection(Gfx *gfx, Cam *cam) {
 #ifdef TARGET_PC
         { /* the free camera: the right stick turns the view (port/game/freecam.c) */
             Vec3f eye;
+            Vec3f at = cam->at;
+            void WM_SpeedShake(f32 *, f32 *);
             Port_FreeCamEye(D_8012455C, &cam->eye, &cam->at, &eye);
-            guLookAtF(look, eye.x, eye.y, eye.z, cam->at.x, cam->at.y, cam->at.z, cam->up.x, cam->up.y, cam->up.z);
+            WM_SpeedShake(&eye.x, &at.x); /* the tremor at speed (wm_speedfx.c) */
+            guLookAtF(look, eye.x, eye.y, eye.z, at.x, at.y, at.z, cam->up.x, cam->up.y, cam->up.z);
         }
 #else
         guLookAtF(look, cam->eye.x, cam->eye.y, cam->eye.z, cam->at.x, cam->at.y, cam->at.z, cam->up.x, cam->up.y, cam->up.z);

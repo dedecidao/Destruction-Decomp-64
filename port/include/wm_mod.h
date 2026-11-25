@@ -77,6 +77,10 @@ typedef struct {
     int healthPlayerPct;        /* the player's starting health on top of durability, % */
     int healthAiPct;            /* the computer cars' starting health on top of durability, % */
     int wallWreckMph;           /* a head-on hit at this speed wrecks the car (0 off) */
+    /* The feel of speed ([speedfx], port/game/wm_speedfx.c) */
+    int speedFx;                /* the chase camera's FOV, spring and shake */
+    int speedFovPct;            /* how much wider the view at the top speed, % */
+    int speedShakePct;          /* the shake's strength, % */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -147,6 +151,9 @@ int WM_PackExtra(void);
 int WM_WreckNear(void);
 int WM_HealthPct(int human);
 int WM_WallWreckMph(void);
+int WM_SpeedFx(void);
+int WM_SpeedFovPct(void);
+int WM_SpeedShakePct(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);
