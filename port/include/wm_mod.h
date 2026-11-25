@@ -72,6 +72,7 @@ typedef struct {
     int recordLine;             /* record the player's line per track (Data/lines/track_N.txt) */
     int racingLine;             /* the computer cars drive a recorded line where there is one */
     int linePct;                /* their speed on it, % of the recorded */
+    int packExtra;              /* computer cars added to the pack race's grid */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -138,6 +139,7 @@ int WM_PlayerYawPct(void);
 int WM_LineRecording(void);
 int WM_RacingLine(void);
 int WM_LinePct(void);
+int WM_PackExtra(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);

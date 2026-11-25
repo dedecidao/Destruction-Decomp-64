@@ -90,6 +90,14 @@ void Race_LoadCarResources(void) {
     if (D_800958A8[0] != 2 && !(D_800958A8[0] == 3 && D_800958A8[1] == 2)) {
         extern u8 *gGame;
         s32 extra = Port_FieldExtraCars(count, *(s16 *)(gGame + 0x1044)); /* the objects so far */
+        {
+            /* Wrecked Metal: the pack race's extra cars ([ai] pack_extra, ai_director.c) */
+            s32 WM_PackExtraCars(void);
+            s32 w = WM_PackExtraCars();
+            if (w > extra) {
+                extra = w;
+            }
+        }
         for (i = 0; extra > 0 && Port_FieldRoomForCar(count); i = (i + 1) % 12) {
             if (used[i]) {
                 continue;

@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 14 /* 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 15 /* 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -112,6 +112,7 @@ static void setDefaults(WMTuning *t) {
     t->recordLine = 0;
     t->racingLine = 1;
     t->linePct = 105;
+    t->packExtra = 4;
 
     t->durabilityPct = 50;
     t->sparksCarHits = 0;
@@ -217,6 +218,8 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "record_line = %d\n", t->recordLine);
     fprintf(f, "racing_line = %d\n", t->racingLine);
     fprintf(f, "line_pct = %d\n", t->linePct);
+    fprintf(f, "; pack_extra = computer cars added to the pack race's grid (mode 1), 0-8.\n");
+    fprintf(f, "pack_extra = %d\n", t->packExtra);
     fprintf(f, "\n[cars]\n");
     fprintf(f, "; durability = every car's health as a %% of the Baja Buggy's (car 13), the race's bonus\n");
     fprintf(f, ";   for difficulty and mode included (50 = half); 0 = each car its own, as the N64.\n");
@@ -307,6 +310,8 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->racingLine = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "line_pct") == 0) {
             t->linePct = clampi(atoi(val), 50, 200);
+        } else if (SDL_strcasecmp(key, "pack_extra") == 0) {
+            t->packExtra = clampi(atoi(val), 0, 8);
         }
         return;
     }
@@ -566,6 +571,10 @@ int WM_LineRecording(void) {
 
 int WM_RacingLine(void) {
     return WM_Enabled() && sTuning.racingLine;
+}
+
+int WM_PackExtra(void) {
+    return WM_Enabled() ? sTuning.packExtra : 0;
 }
 
 int WM_LinePct(void) {

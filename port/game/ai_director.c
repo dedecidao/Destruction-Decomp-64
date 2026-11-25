@@ -56,7 +56,7 @@ typedef struct {
     void *car;
     f32 speed, throttle;
     s32 tenacity, search; /* the driver's own, while the director has raised them */
-    u8 raised, personal, behind;
+    u8 raised, personal, behind, god, rolled;
 } WMDirCar;
 
 static WMDirCar sCars[RACE_CARS];
@@ -243,6 +243,21 @@ static void update(void) {
                pack. */
             s32 behind = ahead(progress(c, ns), pprog, ns) < 0;
             d->behind = (u8)behind;
+            /* god speed: a car that falls behind the player has one chance in three to
+               turn into a perfect, unstoppable driver until it is past the player */
+            if (behind && !d->rolled) {
+                static u32 seed = 0x2545F491u;
+                seed = seed * 1664525u + 1013904223u;
+                d->rolled = 1;
+                d->god = (seed >> 16) % 3 == 0;
+                if (d->god) {
+                    Port_Log("ai: car %d god speed", (int)i);
+                }
+            } else if (!behind && d->rolled) {
+                d->rolled = 0;
+                d->god = 0;
+                ((u8 *)c)[0xBE0] = 0; /* mortal again */
+            }
             if (!behind) {
                 /* ahead: no track limit either (they hold the lead on their own speed) */
                 speed = 4.0f;
@@ -380,6 +395,11 @@ void WM_AiLog(void) {
    on, its velocity (the body's current and previous, Car+0x224 and +0x29C) up 0.6% a
    frame, about a third more a second: whatever its engine, a car behind always closes
    in and passes */
+int WM_AiIsGod(void *car) {
+    WMDirCar *d = sMode == WM_AI_PACK_RACE ? find(car) : NULL;
+    return d != NULL && d->god;
+}
+
 void WM_AiTurbo(void *car) {
     f32 Car_GetSpeed(void *);
     WMDirCar *d;
@@ -389,6 +409,32 @@ void WM_AiTurbo(void *car) {
         return;
     }
     v = Car_GetSpeed(car);
+    if (d->god) {
+        /* god speed: glued to its line (the target WM_AiSteerTarget set), unhurt (Car+0xBE0,
+           the game's own no-damage flag), and far faster than the player: the velocity
+           turned toward the target and raised up to the player's speed x1.3 + 12 m/s */
+        f32 *vel = (f32 *)((u8 *)car + 0x224), *prev = (f32 *)((u8 *)car + 0x29C);
+        const f32 *tg = (const f32 *)(*(u8 **)((u8 *)car + 0x38) + 0x5C);
+        WMVec3 p = Car_GetPos(car);
+        f32 dx = tg[0] - p.x, dz = tg[2] - p.z, dl = __builtin_sqrtf(dx * dx + dz * dz);
+        f32 top = sPlayerSpeed * 1.3f + 12.0f, want = v * 1.03f + 0.6f;
+        ((u8 *)car)[0xBE0] = 1;
+        if (want > top) {
+            want = top;
+        }
+        if (dl > 0.5f && v > 2.0f) {
+            f32 nx = dx / dl * want, nz = dz / dl * want;
+            vel[0] += (nx - vel[0]) * 0.35f;
+            vel[2] += (nz - vel[2]) * 0.35f;
+            prev[0] = vel[0];
+            prev[2] = vel[2];
+            if (vel[1] > 0.0f) {
+                vel[1] *= 0.5f; /* glued to the road: no hops */
+                prev[1] = vel[1];
+            }
+        }
+        return;
+    }
     if (v < 5.0f || v > sPlayerSpeed * 1.12f + 6.0f) {
         return;
     }
@@ -396,4 +442,16 @@ void WM_AiTurbo(void *car) {
         ((f32 *)((u8 *)car + 0x224))[i] *= k;
         ((f32 *)((u8 *)car + 0x29C))[i] *= k;
     }
+}
+
+/* The pack race's extra computer cars (Race_LoadCarResources): [ai] pack_extra (4) more
+   on the grid, race tracks with one player, a single race or a championship */
+s32 WM_PackExtraCars(void) {
+    extern s32 D_800958A4; /* human players */
+    extern s32 D_800958A8; /* game type */
+    extern s32 D_800958B4; /* track */
+    if (WM_AiMode() != WM_AI_PACK_RACE || D_800958A4 != 1 || (D_800958A8 != 0 && D_800958A8 != 1) || D_800958B4 < 4) {
+        return 0;
+    }
+    return WM_PackExtra();
 }

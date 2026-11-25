@@ -46,8 +46,8 @@ void Ai_Steer(Car *car) {
     {
         void WM_AiTurbo(void *); /* the pack race's turbo (ai_director.c) */
         void WM_AiSteerTarget(void *, f32 *); /* the racing line, the attacks (ai_line.c) */
-        WM_AiTurbo(car);
         WM_AiSteerTarget(car, &ai->x5C.x);
+        WM_AiTurbo(car);
     }
 #endif
     pos = Car_GetPos(car);

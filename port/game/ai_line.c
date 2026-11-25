@@ -212,14 +212,17 @@ static void *playerCar(u8 *race) {
 }
 
 /* Ai_Steer, before it steers: the target point (`target`, the AiDriver's x5C) */
+int WM_AiIsGod(void *car);
+
 void WM_AiSteerTarget(void *car, f32 *target) {
     u8 *race;
     void *pl;
     if (!WM_Enabled() || gGame == NULL || (race = RACE(gGame)) == NULL || *(s32 *)(race + 0x10) != 0) {
         return;
     }
-    /* the pack race's attack: close to the player, an aggressive car rams them */
-    if (WM_AiMode() == WM_AI_PACK_RACE && (pl = playerCar(race)) != NULL && CAR_S32(car, 0x58) == CAR_S32(pl, 0x58)) {
+    /* the pack race's attack: close to the player, an aggressive car rams them (not a
+       car on god speed: that one keeps to its line) */
+    if (WM_AiMode() == WM_AI_PACK_RACE && !WM_AiIsGod(car) && (pl = playerCar(race)) != NULL && CAR_S32(car, 0x58) == CAR_S32(pl, 0x58)) {
         WMV3 a = Car_GetPos(car), b = Car_GetPos(pl);
         f32 dx = b.x - a.x, dz = b.z - a.z;
         u32 h = ((u32)(uintptr_t)car >> 4) * 2654435761u >> 28; /* this car's own die, 0-15 */
@@ -251,8 +254,8 @@ void WM_AiSteerTarget(void *car, f32 *target) {
 /* The recorded speed here (m/s) times [ai] line_pct, or 0 without a line */
 f32 WM_AiLineLimit(void *car) {
     s32 seg;
-    if (!lineReady() || CAR_S32(car, 0x58) != sLineDir) {
-        return 0.0f;
+    if (!lineReady() || CAR_S32(car, 0x58) != sLineDir || WM_AiIsGod(car)) {
+        return 0.0f; /* (god speed: no limit) */
     }
     seg = CAR_S32(car, 0x28);
     if (seg < 0 || seg >= sLineSegs || !sLineOk[seg]) {
