@@ -268,7 +268,7 @@ void WM_CarApplyFloor(void *stats) {
     if (stats == NULL || !WM_Enabled()) {
         return;
     }
-    /* [cars] mass_car1: car 1 (model 0, the white "2") heavier, its springs with it */
+    /* [cars] mass_car1: car 1 (model 0, the white "2") heavier or lighter, its springs with it */
     if (((const u32 *)stats)[1] == 0 && WM_MassCar1Pct() != 100 && WM_CarStatsSane(stats)) {
         const u32 *own = WM_CarRecord(0);
         /* only a record still at its own weight: a race sets its cars up twice, from a

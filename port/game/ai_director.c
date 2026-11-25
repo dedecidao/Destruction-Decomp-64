@@ -271,6 +271,12 @@ static void update(void) {
             }
         }
         speed *= base;
+        if (sMode == WM_AI_PACK_RACE) {
+            /* not all alike: each car its own pace, -6% to +6% */
+            static const f32 kVar[5] = { 1.06f, 0.97f, 1.03f, 0.94f, 1.00f };
+            speed *= kVar[i % 5];
+            throttle *= kVar[i % 5];
+        }
         /* smoothly: about a second to settle */
         d->speed += (speed - d->speed) * 0.35f;
         d->throttle += (throttle - d->throttle) * 0.35f;

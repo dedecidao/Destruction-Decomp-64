@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 13 /* 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 14 /* 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -109,12 +109,15 @@ static void setDefaults(WMTuning *t) {
     t->aiMode = WM_AI_CLASSIC;
     t->aiDirector = 1;
     t->aiFixBugs = 1;
+    t->recordLine = 0;
+    t->racingLine = 1;
+    t->linePct = 105;
 
     t->durabilityPct = 50;
     t->sparksCarHits = 0;
     t->perfFloor = 1;
     t->barsPct = 50;
-    t->massCar1Pct = 125;
+    t->massCar1Pct = 100;
     t->playerYawPct = 200;
 }
 
@@ -208,6 +211,12 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "mode = %d\n", t->aiMode);
     fprintf(f, "director = %d\n", t->aiDirector);
     fprintf(f, "fix_bugs = %d\n", t->aiFixBugs);
+    fprintf(f, "; record_line = 1: record your line and speed on race tracks (Data/lines/track_N.txt; a\n");
+    fprintf(f, ";   clean time trial lap is best). racing_line = 1: computer cars drive a recorded line where\n");
+    fprintf(f, ";   there is one, at line_pct %% of its speed.\n");
+    fprintf(f, "record_line = %d\n", t->recordLine);
+    fprintf(f, "racing_line = %d\n", t->racingLine);
+    fprintf(f, "line_pct = %d\n", t->linePct);
     fprintf(f, "\n[cars]\n");
     fprintf(f, "; durability = every car's health as a %% of the Baja Buggy's (car 13), the race's bonus\n");
     fprintf(f, ";   for difficulty and mode included (50 = half); 0 = each car its own, as the N64.\n");
@@ -292,6 +301,12 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->aiDirector = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "fix_bugs") == 0) {
             t->aiFixBugs = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "record_line") == 0) {
+            t->recordLine = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "racing_line") == 0) {
+            t->racingLine = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "line_pct") == 0) {
+            t->linePct = clampi(atoi(val), 50, 200);
         }
         return;
     }
@@ -454,6 +469,9 @@ void WM_ReloadTuning(void) {
         if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
         }
+        if (sTuning.tuningVersion == 13) {
+            sTuning.massCar1Pct = 100; /* car 1's extra weight withdrawn */
+        }
         if (sTuning.tuningVersion == 7) {
             /* v7 was a test build's layout: the new defaults */
             memcpy(sTuning.hudPos, kHudDefaults, sizeof(sTuning.hudPos));
@@ -539,6 +557,19 @@ int WM_MassCar1Pct(void) {
 
 int WM_PlayerYawPct(void) {
     return WM_Enabled() ? sTuning.playerYawPct : 100;
+}
+
+int WM_LineRecording(void) {
+    /* DD64_RECLINE=1 (testing) records whatever the ini says */
+    return WM_Enabled() && (sTuning.recordLine || SDL_getenv("DD64_RECLINE") != NULL);
+}
+
+int WM_RacingLine(void) {
+    return WM_Enabled() && sTuning.racingLine;
+}
+
+int WM_LinePct(void) {
+    return sTuning.linePct;
 }
 
 int WM_PerfFloor(void) {

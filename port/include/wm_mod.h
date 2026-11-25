@@ -69,6 +69,9 @@ typedef struct {
     int barsPct;                /* the car-select speed and acceleration bars shown at this % */
     int massCar1Pct;            /* car 1's (the white "2") mass, % of its own */
     int playerYawPct;           /* the player's resistance to being spun (yaw inertia), % */
+    int recordLine;             /* record the player's line per track (Data/lines/track_N.txt) */
+    int racingLine;             /* the computer cars drive a recorded line where there is one */
+    int linePct;                /* their speed on it, % of the recorded */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -132,6 +135,9 @@ int WM_PerfFloor(void);
 int WM_BarsPct(void);
 int WM_MassCar1Pct(void);
 int WM_PlayerYawPct(void);
+int WM_LineRecording(void);
+int WM_RacingLine(void);
+int WM_LinePct(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);
