@@ -65,6 +65,8 @@ typedef struct {
     /* Cars ([cars] in wm_tuning.ini) */
     int durabilityPct;          /* every car's health, % of the Baja Buggy's (0 = each its own) */
     int sparksCarHits;          /* sparks where two cars hit (the wall sparks stay) */
+    int perfFloor;              /* the quickest car's engine and the fastest car's gearbox as every car's minimum */
+    int barsPct;                /* the car-select speed and acceleration bars shown at this % */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -124,6 +126,8 @@ int WM_AiDirectorOn(void);
 int WM_AiFixBugs(void);
 int WM_DurabilityPct(void);
 int WM_SparksCarHits(void);
+int WM_PerfFloor(void);
+int WM_BarsPct(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);

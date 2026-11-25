@@ -194,3 +194,95 @@ void WM_WreckLogMove(void *car, f32 speed) {
         Port_Log("wrecklog: wreck %p model %d moving %.1f m/s", car, *(s32 *)((u8 *)car + 0x34), (double)speed);
     }
 }
+
+/* ---- Wrecked Metal: a floor for every car's performance ([cars] perf_floor) ---- */
+
+/* CarStats words (the record, in host order): torque at 0 rpm 0x2C, max torque 0x30,
+   the gear ratios R and 1-5 0x40-0x54, the final ratio 0x58, the engine sound's gear
+   speeds 0x60-0x74, mass 0x78 */
+#define ST_F(r, o) (((f32 *)(r))[(o) / 4])
+
+/* The car with the most torque for its weight (the quickest) and the one with the lowest
+   top-gear ratio (5th x final: the fastest, its engine reaching its top revs latest) */
+static void bestCars(s32 *quick, s32 *fast) {
+    static s32 q = -1, f = -1;
+    if (q < 0) {
+        f32 bq = 0.0f, bf = 1e9f;
+        s32 i;
+        for (i = 0; i < 24; i++) {
+            const u32 *r = WM_CarRecord(i);
+            f32 a = ST_F(r, 0x30) / ST_F(r, 0x78);
+            f32 g = ST_F(r, 0x54) * ST_F(r, 0x58);
+            if (a > bq) {
+                bq = a;
+                q = i;
+            }
+            if (g > 0.0f && g < bf) {
+                bf = g;
+                f = i;
+            }
+        }
+        Port_Log("cars: perf floor from car %d (quickest, %.3f torque/kg) and car %d (fastest, top gear %.2f)",
+                 q + 1, (double)bq, f + 1, (double)bf);
+    }
+    *quick = q;
+    *fast = f;
+}
+
+/* Raise the record `stats` (about to become a car, Car_Create) to the floor: its torque
+   to the quickest car's for its own weight, and if its top gear is slower, the fastest
+   car's whole gearbox (the ratios, the final ratio and the sound's gear speeds) */
+void WM_CarApplyFloor(void *stats) {
+    s32 q, f, o;
+    const u32 *rq, *rf;
+    f32 mass;
+    if (!WM_PerfFloor() || stats == NULL) {
+        return;
+    }
+    bestCars(&q, &f);
+    rq = WM_CarRecord(q);
+    rf = WM_CarRecord(f);
+    mass = ST_F(stats, 0x78);
+    if (ST_F(stats, 0x2C) < ST_F(rq, 0x2C) / ST_F(rq, 0x78) * mass) {
+        ST_F(stats, 0x2C) = ST_F(rq, 0x2C) / ST_F(rq, 0x78) * mass;
+    }
+    if (ST_F(stats, 0x30) < ST_F(rq, 0x30) / ST_F(rq, 0x78) * mass) {
+        ST_F(stats, 0x30) = ST_F(rq, 0x30) / ST_F(rq, 0x78) * mass;
+    }
+    if (ST_F(stats, 0x54) * ST_F(stats, 0x58) > ST_F(rf, 0x54) * ST_F(rf, 0x58)) {
+        for (o = 0x40; o <= 0x58; o += 4) {
+            ST_F(stats, o) = ST_F(rf, o);
+        }
+        for (o = 0x60; o <= 0x74; o += 4) {
+            ST_F(stats, o) = ST_F(rf, o);
+        }
+    }
+    {
+        void WM_FloorLog(void *);
+        WM_FloorLog(stats);
+    }
+}
+
+/* DD64_FLOORLOG (testing): a car's engine and gearbox after the floor */
+void WM_FloorLog(void *stats) {
+    if (getenv("DD64_FLOORLOG") != NULL) {
+        Port_Log("floor: model %d torque %.0f/%.0f mass %.0f gears %.1f %.1f %.1f %.1f %.1f final %.2f sound top %.0f",
+                 (int)((s32 *)stats)[1], (double)ST_F(stats, 0x2C), (double)ST_F(stats, 0x30), (double)ST_F(stats, 0x78),
+                 (double)ST_F(stats, 0x44), (double)ST_F(stats, 0x48), (double)ST_F(stats, 0x4C), (double)ST_F(stats, 0x50),
+                 (double)ST_F(stats, 0x54), (double)ST_F(stats, 0x58), (double)ST_F(stats, 0x74));
+    }
+}
+
+/* The car-select bar `bar` (0 speed, 1 acceleration, 2 handling, 3 durability) as shown */
+s32 WM_CarBar(s32 bar, s32 value) {
+    if (bar < 2 && WM_PerfFloor()) {
+        value = value < 19 ? 19 : value; /* every car at least the best */
+    }
+    if (bar < 2) {
+        value = (value * WM_BarsPct() + 50) / 100;
+        if (value < 1) {
+            value = 1;
+        }
+    }
+    return value;
+}

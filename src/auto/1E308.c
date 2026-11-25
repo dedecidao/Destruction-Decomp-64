@@ -178,6 +178,13 @@ Car *Car_Create(CarStats *s) {
 #ifdef TARGET_PC
     WM_DumpCarRecords(); /* DD64_DUMPCARS (testing) */
 #endif
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal ([cars] perf_floor): the best engine and gearbox as the minimum */
+        void WM_CarApplyFloor(void *stats);
+        WM_CarApplyFloor(s);
+    }
+#endif
     car = Mem_Alloc(0xEA0);
     if (car == NULL) {
         return NULL;

@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 11 /* 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 12 /* 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -112,6 +112,8 @@ static void setDefaults(WMTuning *t) {
 
     t->durabilityPct = 50;
     t->sparksCarHits = 0;
+    t->perfFloor = 1;
+    t->barsPct = 50;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -210,6 +212,11 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; spark_car_hits = 1: sparks where two cars hit (the sparks off walls stay either way).\n");
     fprintf(f, "durability = %d\n", t->durabilityPct);
     fprintf(f, "spark_car_hits = %d\n", t->sparksCarHits);
+    fprintf(f, "; perf_floor = 1: no car accelerates or tops out below the best: the quickest car's torque for\n");
+    fprintf(f, ";   its weight (car 18) and the fastest car's gearbox (car 19) are every car's minimum.\n");
+    fprintf(f, "; bars = the car-select speed and acceleration bars shown at this %% of the car's real value.\n");
+    fprintf(f, "perf_floor = %d\n", t->perfFloor);
+    fprintf(f, "bars = %d\n", t->barsPct);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -261,6 +268,10 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->durabilityPct = clampi(atoi(val), 0, 300);
         } else if (SDL_strcasecmp(key, "spark_car_hits") == 0) {
             t->sparksCarHits = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "perf_floor") == 0) {
+            t->perfFloor = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "bars") == 0) {
+            t->barsPct = clampi(atoi(val), 10, 100);
         }
         return;
     }
@@ -510,6 +521,14 @@ int WM_AiDirectorOn(void) {
 
 int WM_DurabilityPct(void) {
     return WM_Enabled() ? sTuning.durabilityPct : 0;
+}
+
+int WM_PerfFloor(void) {
+    return WM_Enabled() && sTuning.perfFloor;
+}
+
+int WM_BarsPct(void) {
+    return WM_Enabled() ? sTuning.barsPct : 100;
 }
 
 int WM_SparksCarHits(void) {
