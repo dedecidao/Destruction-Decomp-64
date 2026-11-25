@@ -1867,13 +1867,15 @@ void WM_EmitWind(void *carPtr, void *posPtr, void *mtxPtr) {
     }
     k = (s - 0.55f) / 0.45f;
     o = (WMParticleObj *)(D_801245A4 + 0xB0);
-    n = 2 + (s32)(k * 2.5f);
+    n = 1 + (s32)(k * 1.6f); /* 1-2 a frame */
     for (i = 0; i < n && o->count < o->maxCount - WM_HOOD_RESERVE - 8; i++) {
         Vec3f p, v, acc;
         WMParticle *pt;
-        f32 ahead = 120.0f + (f32)(wmRand() % 260);
-        f32 side = (f32)((wmRand() & 1) ? 1 : -1) * (26.0f + (f32)(wmRand() % 60));
-        f32 up = -4.0f + (f32)(wmRand() % 46);
+        /* far out to the sides for their distance ahead: they pass in the outer quarter of
+           each side of the (widescreen) screen, never across the middle */
+        f32 ahead = 70.0f + (f32)(wmRand() % 110);
+        f32 side = (f32)((wmRand() & 1) ? 1 : -1) * (ahead * 0.55f + (f32)(wmRand() % 45));
+        f32 up = (f32)(wmRand() % 40);
         u32 tone = wmRand() % 3;
         p.x = pos->x + m[0] * ahead + m[8] * side + m[4] * up;
         p.y = pos->y + m[1] * ahead + m[9] * side + m[5] * up;
@@ -1883,8 +1885,9 @@ void WM_EmitWind(void *carPtr, void *posPtr, void *mtxPtr) {
         v.y = 0.0f;
         v.z = -m[2] * (1.0f + 2.0f * k);
         Vec3f_Set(&acc, 0.0f, 0.0f, 0.0f);
-        s32 ma = 60 + (s32)(50.0f * k);
-        pt = (WMParticle *)Particle_Spawn(o, p, v, acc, 4.5f + 3.0f * k, 0.04f, 48, (u8)(ma / 4), ma, 0, 0, 0);
+        /* a small bright fleck that swells as it nears and fades as it goes: small, big, gone */
+        s32 ma = 130 + (s32)(80.0f * k);
+        pt = (WMParticle *)Particle_Spawn(o, p, v, acc, 0.8f, 0.10f + 0.06f * k, 20, (u8)(ma / 3), ma, 0, 0, 0);
         {
             static int nlog;
             if (nlog++ < 5 && getenv("DD64_WINDLOG") != NULL) {
@@ -1894,12 +1897,12 @@ void WM_EmitWind(void *carPtr, void *posPtr, void *mtxPtr) {
             }
         }
         if (pt != NULL) {
-            if (tone == 0) { /* clear blue */
-                pt->r = 175; pt->g = 205; pt->b = 255;
-            } else if (tone == 1) { /* grey */
-                pt->r = 200; pt->g = 205; pt->b = 212;
-            } else { /* near white */
-                pt->r = 235; pt->g = 242; pt->b = 255;
+            if (tone == 0) { /* silver */
+                pt->r = 205; pt->g = 212; pt->b = 225;
+            } else if (tone == 1) { /* white, a hint of blue */
+                pt->r = 238; pt->g = 244; pt->b = 255;
+            } else { /* white */
+                pt->r = 250; pt->g = 250; pt->b = 252;
             }
         }
     }
