@@ -166,6 +166,30 @@ static int lineReady(void) {
             }
             fclose(f);
         }
+        if (n > 1 && n < sLineSegs) {
+            /* the segments the recording missed (off the width, a crawl): filled in between
+               their recorded neighbours, round the lap */
+            s32 i, filled = 0;
+            for (i = 0; i < sLineSegs; i++) {
+                s32 a, b, ga, gb;
+                if (sLineOk[i]) {
+                    continue;
+                }
+                for (ga = 1; ga < sLineSegs && !sLineOk[(i - ga + sLineSegs) % sLineSegs]; ga++) {
+                }
+                for (gb = 1; gb < sLineSegs && !sLineOk[(i + gb) % sLineSegs]; gb++) {
+                }
+                a = (i - ga + sLineSegs) % sLineSegs;
+                b = (i + gb) % sLineSegs;
+                sLineF[i] = sLineF[a] + (sLineF[b] - sLineF[a]) * ga / (ga + gb);
+                sLineV[i] = sLineV[a] + (sLineV[b] - sLineV[a]) * ga / (ga + gb);
+                filled++;
+            }
+            for (i = 0; i < sLineSegs; i++) {
+                sLineOk[i] = 1;
+            }
+            Port_Log("line: %d missing segments filled in", (int)filled);
+        }
         Port_Log("line: track %d %s (%d of %d segments)", (int)sLineTrack, n ? "racing line loaded" : "no racing line",
                  (int)n, (int)RACE_NSEGS(race));
         if (n == 0) {
