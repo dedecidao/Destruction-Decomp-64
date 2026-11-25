@@ -32,9 +32,11 @@ const u32 *WM_CarRecord(int id) {
         for (i = 0; i < WM_CAR_WORDS; i++) {
             sRec[id][i] = buf[i];
         }
-        /* The record's model (word 1) is the car itself: if it reads byte-swapped, the
-           words came through unconverted (big-endian, as in the ROM): swap them here */
-        if (sRec[id][1] != (u32)id && __builtin_bswap32(sRec[id][1]) == (u32)id) {
+        /* The record's model (word 1) is the car itself and its health (word 2) under 300:
+           if they read byte-swapped (car 0's model reads 0 either way), the words came
+           through unconverted (big-endian, as in the ROM; the Android build): swap them */
+        if ((sRec[id][1] != (u32)id || sRec[id][2] > 300u) && __builtin_bswap32(sRec[id][1]) == (u32)id &&
+            __builtin_bswap32(sRec[id][2]) <= 300u) {
             for (i = 0; i < WM_CAR_WORDS; i++) {
                 sRec[id][i] = __builtin_bswap32(sRec[id][i]);
             }
