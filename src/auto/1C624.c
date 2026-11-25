@@ -112,6 +112,12 @@ void Car_UpdateWreck(Car *car) {
             finished = car->xBE1 == 0;
         }
     }
+#ifdef TARGET_PC
+    if (car->xD == 0) {
+        void WM_EmitWind(void *, void *, void *); /* [speedfx] lines: the wind (wm_mod.c) */
+        WM_EmitWind(car, &pos, m);
+    }
+#endif
     if (car->xD == 0) {
         if (car->xE != 0) {
             car->xD = 1;

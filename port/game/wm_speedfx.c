@@ -50,12 +50,13 @@ void WM_SpeedCam(void *car, f32 dt, f32 *dist, f32 *height) {
         sKick = 1.0f; /* a crash: the speed gone in a frame */
     }
     sSpeed = v;
-    sAccel += (a - sAccel) * (1.0f - expf(-dt * 6.0f)); /* the acceleration, filtered */
+    sAccel += (a - sAccel) * (1.0f - expf(-dt * 2.5f)); /* the acceleration, filtered */
     {
-        /* the spring: back up to +30% of the distance pulling away, in to -18% braking */
-        f32 want = sAccel / 30.0f;
-        want = want > 0.30f ? 0.30f : want < -0.18f ? -0.18f : want;
-        sPull += (want - sPull) * (1.0f - expf(-dt * 3.0f));
+        /* the spring: back up to +12% of the distance pulling away, in to -6% braking
+           (a corner bleeding speed must not swing the camera in and out) */
+        f32 want = sAccel / 60.0f;
+        want = want > 0.12f ? 0.12f : want < -0.06f ? -0.06f : want;
+        sPull += (want - sPull) * (1.0f - expf(-dt * 1.2f));
     }
     s = v / TOP_SPEED;
     k = smooth(s);
@@ -69,7 +70,7 @@ void WM_SpeedCam(void *car, f32 dt, f32 *dist, f32 *height) {
         u32 surf = *(u32 *)((u8 *)car + 0x364 + 0x1A8);
         sOffroad = surf == 2 || surf == 4 || surf == 6 || surf == 7 || surf == 8;
     }
-    sShake = clamp01((s - 0.70f) / 0.30f) * (sOffroad ? 2.0f : 1.0f);
+    sShake = clamp01((s - 0.60f) / 0.40f) * (sOffroad ? 2.0f : 1.0f);
     sKick *= expf(-dt * 7.0f);
     sTime += dt;
     {
@@ -93,7 +94,7 @@ void WM_SpeedShake(f32 *eye, f32 *at) {
     if (!WM_SpeedFx() || D_800D31CC != 1) {
         return;
     }
-    amp = (0.020f * sShake + 0.12f * sKick) * WM_SpeedShakePct() / 100.0f;
+    amp = (0.075f * sShake + 0.30f * sKick) * WM_SpeedShakePct() / 100.0f;
     if (amp <= 0.0001f) {
         return;
     }

@@ -1607,10 +1607,7 @@ void *WM_HudDraw(void *gfxPtr) {
         void Port_NoteDriving(int driving);
         Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL);
     }
-    if (WM_Enabled() && Port_GameDrawsWorld() && gGame != NULL && D_800D31CC == 1 && gGame->x10FC == 0x1C) {
-        g = wmSpeedLines(g); /* [speedfx] lines, under the HUD */
-        gfxPtr = g;
-    }
+    (void)wmSpeedLines; /* (the 2D streaks: replaced by the 3D wind, WM_EmitWind) */
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
@@ -1842,4 +1839,68 @@ int WM_WreckFx(void *car, f32 px, f32 py, f32 pz, f32 *m, s32 n) {
         }
     }
     return 1;
+}
+
+/* ---- Wrecked Metal: the wind at speed, in 3D ([speedfx] lines) ----
+ * Above 55% of the top speed, specks of air are left hanging in the world ahead of the
+ * player's car, off to its sides and above and below its line: the car drives into them,
+ * so they stream past the camera at the edges of the screen (all of it, widescreen too)
+ * the way air would, bigger and faster as they near, as fast as the car. Bluish, grey
+ * and clear, faint (a third opaque at most), short-lived; 2-4 a frame on the smoke
+ * pool, its reserve for the hood smoke kept. pos/m: Car_UpdateWreck's, the units the
+ * N64's own wreck flames use (the hood 15 forward); m[0..2] forward, m[4..6] up, m[8..10]
+ * the side. */
+void WM_EmitWind(void *carPtr, void *posPtr, void *mtxPtr) {
+    f32 WM_SpeedNorm(void);
+    const Vec3f *pos = (const Vec3f *)posPtr;
+    const f32 *m = (const f32 *)mtxPtr;
+    WMParticleObj *o;
+    f32 s, k;
+    s32 n, i;
+    if (!WM_Enabled() || !WM_GetTuning()->speedLines || D_801245A4 == NULL || D_800D31CC != 1 ||
+        !wmIsHumanCar(carPtr)) {
+        return;
+    }
+    s = WM_SpeedNorm();
+    if (s < 0.55f) {
+        return;
+    }
+    k = (s - 0.55f) / 0.45f;
+    o = (WMParticleObj *)(D_801245A4 + 0xB0);
+    n = 2 + (s32)(k * 2.5f);
+    for (i = 0; i < n && o->count < o->maxCount - WM_HOOD_RESERVE - 8; i++) {
+        Vec3f p, v, acc;
+        WMParticle *pt;
+        f32 ahead = 120.0f + (f32)(wmRand() % 260);
+        f32 side = (f32)((wmRand() & 1) ? 1 : -1) * (26.0f + (f32)(wmRand() % 60));
+        f32 up = -4.0f + (f32)(wmRand() % 46);
+        u32 tone = wmRand() % 3;
+        p.x = pos->x + m[0] * ahead + m[8] * side + m[4] * up;
+        p.y = pos->y + m[1] * ahead + m[9] * side + m[5] * up;
+        p.z = pos->z + m[2] * ahead + m[10] * side + m[6] * up;
+        /* a little drift back along the car, as air past a moving car */
+        v.x = -m[0] * (1.0f + 2.0f * k);
+        v.y = 0.0f;
+        v.z = -m[2] * (1.0f + 2.0f * k);
+        Vec3f_Set(&acc, 0.0f, 0.0f, 0.0f);
+        s32 ma = 60 + (s32)(50.0f * k);
+        pt = (WMParticle *)Particle_Spawn(o, p, v, acc, 4.5f + 3.0f * k, 0.04f, 48, (u8)(ma / 4), ma, 0, 0, 0);
+        {
+            static int nlog;
+            if (nlog++ < 5 && getenv("DD64_WINDLOG") != NULL) {
+                Port_Log("wind: s %.2f count %d/%d pt %p at %.0f %.0f %.0f (car %.0f %.0f %.0f)", (double)s, (int)o->count,
+                         (int)o->maxCount, (void *)pt, (double)p.x, (double)p.y, (double)p.z, (double)pos->x, (double)pos->y,
+                         (double)pos->z);
+            }
+        }
+        if (pt != NULL) {
+            if (tone == 0) { /* clear blue */
+                pt->r = 175; pt->g = 205; pt->b = 255;
+            } else if (tone == 1) { /* grey */
+                pt->r = 200; pt->g = 205; pt->b = 212;
+            } else { /* near white */
+                pt->r = 235; pt->g = 242; pt->b = 255;
+            }
+        }
+    }
 }
