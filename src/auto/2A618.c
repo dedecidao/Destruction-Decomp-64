@@ -117,6 +117,15 @@ void Car_ApplyImpactDamage(Car *atk, Car *vic, s32 part, s32 dmg) {
         if (vic->x10 < 0) {
             vic->x10 = 0;
         }
+#ifdef TARGET_PC
+        {
+            /* Wrecked Metal: a computer car wrecks only on the player's hit (wm_cars.c) */
+            s32 WM_AiKeepAlive(void *victim, void *attacker);
+            if (vic->x10 <= 0 && WM_AiKeepAlive(vic, atk)) {
+                vic->x10 = 1;
+            }
+        }
+#endif
         if (vic->parts[part].xA74 < 0) {
             vic->parts[part].xA74 = 0;
         }
@@ -186,6 +195,15 @@ void Car_ApplyImpactDamage(Car *atk, Car *vic, s32 part, s32 dmg) {
     if (vic->xE) {
         return;
     }
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal: only the player finishes off a computer car (wm_cars.c) */
+        s32 WM_AiKeepAlive(void *victim, void *attacker);
+        if (WM_AiKeepAlive(vic, atk)) {
+            return;
+        }
+    }
+#endif
     if (race->x10 == 1) {
         atk->x20 += 20;
     } else {
@@ -220,5 +238,13 @@ void Car_ApplyImpactDamage(Car *atk, Car *vic, s32 part, s32 dmg) {
         if (atk->x10 < 0) {
             atk->x10 = 0;
         }
+#ifdef TARGET_PC
+        {
+            s32 WM_AiKeepAlive(void *victim, void *attacker);
+            if (atk->x10 <= 0 && WM_AiKeepAlive(atk, NULL)) {
+                atk->x10 = 1;
+            }
+        }
+#endif
     }
 }

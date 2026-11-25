@@ -62,6 +62,27 @@ typedef struct {
     int aiMode;                 /* WM_AI_CLASSIC, WM_AI_PACK_RACE, WM_AI_HEAD_ON */
     int aiDirector;             /* the race director in the pack and head-on modes */
     int aiFixBugs;              /* the two AI aiming bugs fixed (docs/bugs.md 19, 20) */
+    /* Cars ([cars] in wm_tuning.ini) */
+    int durabilityPct;          /* every car's health, % of the Baja Buggy's (0 = each its own) */
+    int sparksCarHits;          /* sparks where two cars hit (the wall sparks stay) */
+    int perfFloor;              /* the quickest car's engine and the fastest car's gearbox as every car's minimum */
+    int barsPct;                /* the car-select speed and acceleration bars shown at this % */
+    int massCar1Pct;            /* car 1's (the white "2") mass, % of its own */
+    int playerYawPct;           /* the player's resistance to being spun (yaw inertia), % */
+    int recordLine;             /* record the player's line per track (Data/lines/track_N.txt) */
+    int racingLine;             /* the computer cars drive a recorded line where there is one */
+    int linePct;                /* their speed on it, % of the recorded */
+    int packExtra;              /* computer cars added to the pack race's grid */
+    int wreckNear;              /* metres from the player inside which a computer car may wreck */
+    int healthPlayerPct;        /* the player's starting health on top of durability, % */
+    int healthAiPct;            /* the computer cars' starting health on top of durability, % */
+    int wallWreckMph;           /* a head-on hit at this speed wrecks the car (0 off) */
+    /* The feel of speed ([speedfx], port/game/wm_speedfx.c) */
+    int speedFx;                /* the chase camera's FOV, spring and shake */
+    int speedFovPct;            /* how much wider the view at the top speed, % */
+    int speedShakePct;          /* the shake's strength, % */
+    int speedLines;             /* streaks at the screen's sides at speed */
+    int speedWindPct;           /* the wind's loudness at speed, % (0 off) */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -119,6 +140,22 @@ int WM_CanInitAiSkid(void);
 int WM_AiMode(void);
 int WM_AiDirectorOn(void);
 int WM_AiFixBugs(void);
+int WM_DurabilityPct(void);
+int WM_SparksCarHits(void);
+int WM_PerfFloor(void);
+int WM_BarsPct(void);
+int WM_MassCar1Pct(void);
+int WM_PlayerYawPct(void);
+int WM_LineRecording(void);
+int WM_RacingLine(void);
+int WM_LinePct(void);
+int WM_PackExtra(void);
+int WM_WreckNear(void);
+int WM_HealthPct(int human);
+int WM_WallWreckMph(void);
+int WM_SpeedFx(void);
+int WM_SpeedFovPct(void);
+int WM_SpeedShakePct(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);

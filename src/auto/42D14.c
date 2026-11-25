@@ -39,6 +39,14 @@ void CarSelect_SetStatBars(s32 arg0) {
 
     for (i = 0; i < 4; i++) {
         e = Ui_FindElement(gUi, 2, ids[i]);
+#ifdef TARGET_PC
+        {
+            /* Wrecked Metal: with [cars] perf_floor every car is at least the best (19) in speed
+               and acceleration; those two bars are shown at [cars] bars % (port/game/wm_cars.c) */
+            s32 WM_CarBar(s32 bar, s32 value);
+            tbl[arg0][i] = WM_CarBar(i, tbl[arg0][i]);
+        }
+#endif
         x = 0x52 - (0x13 - tbl[arg0][i]) * 4;
         e->x88 = x;
         if (tbl[arg0][i] == 0x13) {

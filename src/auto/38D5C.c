@@ -364,6 +364,8 @@ void Car_UpdatePhysics(Car *car, f32 dt) {
 #ifdef TARGET_PC
     {
         void WM_LogGear(void *, f32);
+        { void WM_LineRecord(void *); WM_LineRecord(car); } /* [ai] record_line */
+        { void WM_NoteSpeed(void *); WM_NoteSpeed(car); } /* wall_wreck_mph (wm_cars.c) */
         WM_LogGear(car, sqrtf(car->body.cur.vel.x * car->body.cur.vel.x + car->body.cur.vel.y * car->body.cur.vel.y + car->body.cur.vel.z * car->body.cur.vel.z)); /* DD64_GEARLOG (testing) */
     }
 #endif

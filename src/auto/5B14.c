@@ -42,6 +42,14 @@ void Ai_Steer(Car *car) {
     s32 lim;
     Input *in;
 
+#ifdef TARGET_PC
+    {
+        void WM_AiTurbo(void *); /* the pack race's turbo (ai_director.c) */
+        void WM_AiSteerTarget(void *, f32 *); /* the racing line, the attacks (ai_line.c) */
+        WM_AiSteerTarget(car, &ai->x5C.x);
+        WM_AiTurbo(car);
+    }
+#endif
     pos = Car_GetPos(car);
     fwd = func_8001FC08(car);
     accel = 1;
@@ -77,7 +85,18 @@ void Ai_Steer(Car *car) {
             /* the race director (port/game/ai_director.c): 1 unless Wrecked Metal's pack or
                head-on mode scales this car's pace */
             f32 WM_AiSpeedScale(void *);
+            f32 WM_AiLineLimit(void *);
             f32 k = WM_AiSpeedScale(car);
+            f32 line = WM_AiLineLimit(car);
+            if (line > 0.0f) {
+                /* a recorded line: its speed, the director's push kept to +15% (ai_line.c) */
+                f32 l = line * (k > 1.15f ? 1.15f : k);
+                if (l < spd) {
+                    brake = 1;
+                    accel = 0;
+                }
+                goto steer_done;
+            }
             if (k != 1.0f) {
                 f32 l = lim * k;
                 if (l < spd || (ai->x10 == 12 && l - 5 < spd)) {

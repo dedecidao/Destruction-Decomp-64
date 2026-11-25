@@ -513,8 +513,20 @@ static int wmIsHumanCar(void *carPtr);
 #define WM_HOOD_MEDIUM 50
 #define WM_HOOD_HEAVY 21
 
+/* The smoke follows the health as a share of a full car's: with [cars] durability every
+   car starts on that % of the Baja Buggy's, so the stages scale with it (at 50, light
+   smoke from 40, black near 0), or every car would smoke from the start */
+static s32 wmSmokeHp(s32 hp) {
+    int pct = WM_DurabilityPct();
+    return pct > 0 ? hp * 100 / pct : hp;
+}
+
 int WM_HoodSmokeStartHp(void) {
-    return WM_Enabled() ? WM_HOOD_LIGHT : WM_HOOD_HEAVY;
+    int pct = WM_DurabilityPct();
+    if (!WM_Enabled()) {
+        return WM_HOOD_HEAVY;
+    }
+    return pct > 0 ? (WM_HOOD_LIGHT * pct + 99) / 100 : WM_HOOD_LIGHT;
 }
 
 int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
@@ -526,7 +538,7 @@ int WM_EmitHoodSmoke(void *carPtr, void *posPtr, void *mtxPtr) {
     WMParticle *pt;
     Vec3f p, v, acc;
     f32 spd, spdNorm, r1, r2, backPush, latVel, scale, spread, rise;
-    s32 life, hp = car->health, every, maxAlpha, alphaStep;
+    s32 life, hp = wmSmokeHp(car->health), every, maxAlpha, alphaStep;
     u8 *tick;
     int human;
 
@@ -1530,6 +1542,54 @@ static f32 stepSmoothBar(f32 cur, f32 target, f32 riseRate, f32 fallRate) {
     return cur;
 }
 
+/* [speedfx] lines: faint white streaks rushing out at the screen's sides above 60% of
+   the top speed, 16 of them, each a 1-pixel-high fill rect sliding outward and
+   lengthening, respawned near the middle third: the old comic-book speed lines, on the
+   HUD's own fill rects (no framebuffer copy, no texture) */
+static WMGfx *wmSpeedLines(WMGfx *g) {
+    f32 WM_SpeedNorm(void);
+    static f32 sx[16], sl[16];
+    static s16 sy[16];
+    static u8 sOn;
+    f32 s = WM_SpeedNorm(), k;
+    s32 i;
+    if (!WM_GetTuning()->speedLines || s < 0.60f) {
+        sOn = 0;
+        return g;
+    }
+    k = (s - 0.60f) / 0.40f; /* 0-1 */
+    if (!sOn) {
+        for (i = 0; i < 16; i++) {
+            sx[i] = 999.0f; /* all due a respawn */
+        }
+        sOn = 1;
+    }
+    g = wmBeginRects(g);
+    for (i = 0; i < 16; i++) {
+        s32 left = i & 1, x0, x1;
+        u32 a;
+        if (sx[i] > 170.0f) {
+            /* respawn: out from 50-110 px off the middle, at any height but the HUD's */
+            sx[i] = 50.0f + (f32)(wmRand() % 60);
+            sl[i] = 6.0f + (f32)(wmRand() % 10);
+            sy[i] = (s16)(40 + wmRand() % 160);
+        }
+        sx[i] += 9.0f + 10.0f * k + (f32)(i % 3);
+        sl[i] += 2.5f + 3.0f * k;
+        a = (u32)(0x18 + (s32)(0x24 * k) * (s32)(sx[i] < 150.0f ? 1 : 0));
+        x0 = left ? 160 - (s32)(sx[i] + sl[i]) : 160 + (s32)sx[i];
+        x1 = x0 + (s32)sl[i];
+        if (x0 < 0) {
+            x0 = 0;
+        }
+        if (x1 > 320) {
+            x1 = 320;
+        }
+        g = wmRect(g, x0, sy[i], x1, sy[i] + 1, 0xFFFFFF00u | a);
+    }
+    return g;
+}
+
 void *WM_HudDraw(void *gfxPtr) {
     static f32 sSmoothT, sSmoothB;
     static u32 sFrame;
@@ -1547,6 +1607,7 @@ void *WM_HudDraw(void *gfxPtr) {
         void Port_NoteDriving(int driving);
         Port_NoteDriving(Port_GameDrawsWorld() && gGame != NULL);
     }
+    (void)wmSpeedLines; /* (the 2D streaks: replaced by the 3D wind, WM_EmitWind) */
     if (!WM_HudBarsEnabled() || !Port_GameDrawsWorld() || gGame == NULL || D_800D31CC != 1) {
         sSmoothT = 0.0f;
         sSmoothB = 0.0f;
@@ -1635,4 +1696,211 @@ void *WM_HudDraw(void *gfxPtr) {
         WM_GFX2(g, 0x00480000, 0);
     }
     return WM_ScoreDraw(g);
+}
+
+/* ---- Wrecked Metal: the wreck's explosion and fire (Car_EmitWreckParticles) ----
+ *
+ * A real car fire does not throw balls about: the fuel goes up in a fireball that swells
+ * where the car is, rolls upward and turns into a thick black column, while hot bits arc
+ * out and fall. So, on the game's own flame and smoke particles (a few a frame):
+ *   the blast (the first 0.6 s): flames born small all over the car, barely moving
+ *     (outward at 1-2.5, up at 1.5-3.5) but swelling fast, staggered over the first
+ *     frames so the fireball builds and rolls up as one mass; a dark core of smoke inside
+ *     it; a handful of hot fragments arcing out and down under gravity; then a black
+ *     column billowing up slowly and widening;
+ *   the fire (to 50 s): two tongues of flame a frame from the car itself, the engine bay
+ *     most (in its middle and both sides), the cabin (both windows, licking up) and the
+ *     boot, each flickering, rising slowly and short-lived, with now and then a bigger
+ *     flare; a black plume rolling off the roof; past 40 s it dies down; after 50 s the
+ *     N64's smoke.
+ * The matrix rows: m[0..2] the car's forward, m[4..6] up, m[8..10] its side (the units
+ * those of the N64's own wreck flames: the hood is 15 forward). */
+f32 WM_WreckAge(void *car, s32 n);
+
+static f32 fxRand(void) { /* 0..1, our own sequence */
+    return (f32)(wmRand() & 0xFFFF) / 65535.0f;
+}
+
+static f32 fxSigned(void) { /* -1..1 */
+    return fxRand() * 2.0f - 1.0f;
+}
+
+static void fxAt(Vec3f *p, f32 px, f32 py, f32 pz, const f32 *m, f32 fwd, f32 side, f32 up) {
+    p->x = px + m[0] * fwd + m[8] * side + m[4] * up;
+    p->y = py + m[1] * fwd + m[9] * side + m[5] * up;
+    p->z = pz + m[2] * fwd + m[10] * side + m[6] * up;
+}
+
+static void fxFlameAcc(Vec3f p, Vec3f v, f32 ay, f32 size, f32 grow, s32 life) {
+    WMParticleObj *o = (WMParticleObj *)(D_801245A4 + 0x148);
+    Vec3f acc;
+    if (o->count >= o->maxCount) {
+        return;
+    }
+    Vec3f_Set(&acc, 0.0f, ay, 0.0f);
+    Particle_Spawn(o, p, v, acc, size, grow, (u16)life, (u8)(0xFF / life), 0xFF, 0, 0, 5);
+}
+
+static void fxFlame(Vec3f p, Vec3f v, f32 size, f32 grow, s32 life) {
+    fxFlameAcc(p, v, 0.0f, size, grow, life);
+}
+
+static void fxSmoke(Vec3f p, Vec3f v, f32 size, f32 grow, s32 life) {
+    WMParticleObj *o = (WMParticleObj *)(D_801245A4 + 0xB0);
+    Vec3f acc;
+    if (o->count >= o->maxCount) {
+        return;
+    }
+    Vec3f_Set(&acc, 0.0f, 0.015f, 0.0f);
+    Particle_Spawn(o, p, v, acc, size, grow, (u16)life, 50, 250, 0, 1, 1); /* black */
+}
+
+int WM_WreckFx(void *car, f32 px, f32 py, f32 pz, f32 *m, s32 n) {
+    s32 life = 0x13 - D_800D31CC * 3, frame, i;
+    f32 age;
+    Vec3f p, v;
+    if (!WM_Enabled() || D_801245A4 == NULL) {
+        return 0;
+    }
+    age = WM_WreckAge(car, n);
+    if (age < 0.0f || age >= 50.0f) {
+        return 0; /* the N64's smoke */
+    }
+    frame = (s32)(age * 60.0f);
+    if (age < 0.6f) {
+        /* the blast */
+        f32 k = 1.0f - age / 0.6f; /* 1 at the start, 0 at the end */
+        if (frame < 8) {
+            /* the fireball: born small over the whole car, swelling where it is, rolling up */
+            for (i = 0; i < 3; i++) {
+                f32 fw = fxSigned() * 20.0f, sd = fxSigned() * 9.0f, up = 2.0f + fxRand() * 6.0f;
+                f32 out = 1.0f + fxRand() * 1.5f;
+                fxAt(&p, px, py, pz, m, fw, sd, up);
+                v.x = (m[0] * fw + m[8] * sd) / 20.0f * out;
+                v.y = 1.5f + fxRand() * 2.0f + frame * 0.25f;
+                v.z = (m[2] * fw + m[10] * sd) / 20.0f * out;
+                fxFlame(p, v, 10.0f + fxRand() * 8.0f, 1.9f + fxRand() * 0.6f, life + 8);
+            }
+        }
+        if (frame == 0) {
+            /* hot fragments, arcing out and falling */
+            for (i = 0; i < 6; i++) {
+                f32 a = fxRand() * 6.2832f, sp = 4.0f + fxRand() * 4.0f;
+                fxAt(&p, px, py, pz, m, fxSigned() * 10.0f, fxSigned() * 5.0f, 6.0f);
+                v.x = __builtin_cosf(a) * sp;
+                v.y = 5.0f + fxRand() * 4.0f;
+                v.z = __builtin_sinf(a) * sp;
+                fxFlameAcc(p, v, -0.45f, 1.6f + fxRand() * 1.2f, 0.0f, life + 18);
+            }
+        }
+        if (frame >= 3 && frame % 2 == 0) {
+            /* the core going dark, and the column it becomes */
+            fxAt(&p, px, py, pz, m, fxSigned() * 12.0f, fxSigned() * 6.0f, 9.0f + frame * 0.3f);
+            Vec3f_Set(&v, fxSigned() * 0.6f, 2.0f + fxRand() * 1.4f, fxSigned() * 0.6f);
+            fxSmoke(p, v, 11.0f + fxRand() * 5.0f, 0.55f, life + 26);
+        }
+        if (frame >= 8) {
+            /* the fireball's tail: flames dying back into the car */
+            fxAt(&p, px, py, pz, m, fxSigned() * 16.0f, fxSigned() * 7.0f, 4.0f + fxRand() * 4.0f);
+            Vec3f_Set(&v, fxSigned() * 0.5f, 1.8f + fxRand() * 1.2f, fxSigned() * 0.5f);
+            fxFlame(p, v, 8.0f + 10.0f * k, 0.9f, life);
+        }
+        return 1;
+    }
+    {
+        /* the fire: two places a frame, in turn; dying down after 40 s */
+        static const f32 kPlace[8][5] = {
+            /* forward, side, up, size, rise */
+            { 15.0f, 0.0f, 4.0f, 7.5f, 1.9f },   /* the engine bay */
+            { -1.0f, -7.0f, 7.0f, 4.5f, 2.2f },  /* the left window, licking up */
+            { 13.0f, 4.0f, 3.5f, 6.0f, 1.7f },   /* the engine's side */
+            { -20.0f, 0.0f, 4.0f, 4.0f, 1.6f },  /* the boot */
+            { 16.0f, -4.0f, 3.5f, 6.0f, 1.7f },  /* the engine's other side */
+            { -1.0f, 7.0f, 7.0f, 4.5f, 2.2f },   /* the right window */
+            { 11.0f, 0.0f, 6.0f, 5.0f, 2.0f },   /* over the bonnet */
+            { -6.0f, 0.0f, 9.0f, 3.5f, 2.4f },   /* through the roof */
+        };
+        f32 fade = age > 40.0f ? 1.0f - (age - 40.0f) / 20.0f : 1.0f; /* to half by 50 s */
+        for (i = 0; i < 2; i++) {
+            const f32 *pl = kPlace[(frame * 2 + i) % 8];
+            f32 flick = 0.7f + fxRand() * 0.6f;
+            if (fxRand() < 0.04f) {
+                flick *= 1.8f; /* a flare */
+            }
+            fxAt(&p, px, py, pz, m, pl[0] + fxSigned() * 2.0f, pl[1] + fxSigned() * 1.5f, pl[2]);
+            Vec3f_Set(&v, fxSigned() * 0.5f, pl[4] * (0.8f + fxRand() * 0.4f), fxSigned() * 0.5f);
+            fxFlame(p, v, pl[3] * flick * fade, 0.22f, life - 4);
+        }
+        if (frame % 4 == 0) {
+            /* the plume rolling off the roof */
+            fxAt(&p, px, py, pz, m, fxSigned() * 5.0f, fxSigned() * 3.0f, 10.0f);
+            Vec3f_Set(&v, fxSigned() * 0.4f, 2.3f + fxRand() * 0.8f, fxSigned() * 0.4f);
+            fxSmoke(p, v, (7.0f + fxRand() * 2.5f) * (0.6f + 0.4f * fade), 0.42f, life + 14);
+        }
+    }
+    return 1;
+}
+
+/* ---- Wrecked Metal: the wind at speed, in 3D ([speedfx] lines) ----
+ * Above 55% of the top speed, specks of air are left hanging in the world ahead of the
+ * player's car, off to its sides and above and below its line: the car drives into them,
+ * so they stream past the camera at the edges of the screen (all of it, widescreen too)
+ * the way air would, bigger and faster as they near, as fast as the car. Bluish, grey
+ * and clear, faint (a third opaque at most), short-lived; 2-4 a frame on the smoke
+ * pool, its reserve for the hood smoke kept. pos/m: Car_UpdateWreck's, the units the
+ * N64's own wreck flames use (the hood 15 forward); m[0..2] forward, m[4..6] up, m[8..10]
+ * the side. */
+void WM_EmitWind(void *carPtr, void *posPtr, void *mtxPtr) {
+    f32 WM_SpeedNorm(void);
+    const Vec3f *pos = (const Vec3f *)posPtr;
+    const f32 *m = (const f32 *)mtxPtr;
+    WMParticleObj *o;
+    f32 s, k;
+    s32 n, i;
+    if (!WM_Enabled() || !WM_GetTuning()->speedLines || D_801245A4 == NULL || D_800D31CC != 1 ||
+        !wmIsHumanCar(carPtr)) {
+        return;
+    }
+    s = WM_SpeedNorm();
+    if (s < 0.55f) {
+        return;
+    }
+    k = (s - 0.55f) / 0.45f;
+    o = (WMParticleObj *)(D_801245A4 + 0xB0);
+    n = 2 + (s32)(k * 2.5f);
+    for (i = 0; i < n && o->count < o->maxCount - WM_HOOD_RESERVE - 8; i++) {
+        Vec3f p, v, acc;
+        WMParticle *pt;
+        f32 ahead = 120.0f + (f32)(wmRand() % 260);
+        f32 side = (f32)((wmRand() & 1) ? 1 : -1) * (26.0f + (f32)(wmRand() % 60));
+        f32 up = -4.0f + (f32)(wmRand() % 46);
+        u32 tone = wmRand() % 3;
+        p.x = pos->x + m[0] * ahead + m[8] * side + m[4] * up;
+        p.y = pos->y + m[1] * ahead + m[9] * side + m[5] * up;
+        p.z = pos->z + m[2] * ahead + m[10] * side + m[6] * up;
+        /* a little drift back along the car, as air past a moving car */
+        v.x = -m[0] * (1.0f + 2.0f * k);
+        v.y = 0.0f;
+        v.z = -m[2] * (1.0f + 2.0f * k);
+        Vec3f_Set(&acc, 0.0f, 0.0f, 0.0f);
+        s32 ma = 60 + (s32)(50.0f * k);
+        pt = (WMParticle *)Particle_Spawn(o, p, v, acc, 4.5f + 3.0f * k, 0.04f, 48, (u8)(ma / 4), ma, 0, 0, 0);
+        {
+            static int nlog;
+            if (nlog++ < 5 && getenv("DD64_WINDLOG") != NULL) {
+                Port_Log("wind: s %.2f count %d/%d pt %p at %.0f %.0f %.0f (car %.0f %.0f %.0f)", (double)s, (int)o->count,
+                         (int)o->maxCount, (void *)pt, (double)p.x, (double)p.y, (double)p.z, (double)pos->x, (double)pos->y,
+                         (double)pos->z);
+            }
+        }
+        if (pt != NULL) {
+            if (tone == 0) { /* clear blue */
+                pt->r = 175; pt->g = 205; pt->b = 255;
+            } else if (tone == 1) { /* grey */
+                pt->r = 200; pt->g = 205; pt->b = 212;
+            } else { /* near white */
+                pt->r = 235; pt->g = 242; pt->b = 255;
+            }
+        }
+    }
 }

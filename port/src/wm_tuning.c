@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 10 /* 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 21 /* 21: [speedfx] lines, wind; 20: [speedfx]; 19: wall_wreck_mph 0 (any lethal hit); 18: racing_line off, [cars] wall_wreck_mph; 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -83,7 +83,7 @@ static void setDefaults(WMTuning *t) {
     t->snowAlpha = 142;
     t->snowLift = 0.06f;
 
-    t->scoreFxEnabled = 1;
+    t->scoreFxEnabled = 0; /* the score's count-up and sounds: off for now (Andre, v16) */
     t->scoreFxScale = 2.35f;
     t->scoreFxAudio = 1;
     t->scoreFxVolume = 1.45f;
@@ -109,6 +109,26 @@ static void setDefaults(WMTuning *t) {
     t->aiMode = WM_AI_CLASSIC;
     t->aiDirector = 1;
     t->aiFixBugs = 1;
+    t->recordLine = 0;
+    t->racingLine = 0; /* (Andre: the recorded line confused them off it; v18) */
+    t->linePct = 105;
+    t->packExtra = 4;
+    t->wreckNear = 100;
+    t->healthPlayerPct = 115;
+    t->wallWreckMph = 0;
+    t->speedFx = 1;
+    t->speedFovPct = 26;
+    t->speedShakePct = 100;
+    t->speedLines = 1;
+    t->speedWindPct = 100;
+    t->healthAiPct = 120;
+
+    t->durabilityPct = 50;
+    t->sparksCarHits = 0;
+    t->perfFloor = 1;
+    t->barsPct = 50;
+    t->massCar1Pct = 100;
+    t->playerYawPct = 200;
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -201,6 +221,49 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "mode = %d\n", t->aiMode);
     fprintf(f, "director = %d\n", t->aiDirector);
     fprintf(f, "fix_bugs = %d\n", t->aiFixBugs);
+    fprintf(f, "; record_line = 1: record your line and speed on race tracks (Data/lines/track_N.txt; a\n");
+    fprintf(f, ";   clean time trial lap is best). racing_line = 1: computer cars drive a recorded line where\n");
+    fprintf(f, ";   there is one, at line_pct %% of its speed.\n");
+    fprintf(f, "record_line = %d\n", t->recordLine);
+    fprintf(f, "racing_line = %d\n", t->racingLine);
+    fprintf(f, "line_pct = %d\n", t->linePct);
+    fprintf(f, "; pack_extra = computer cars added to the pack race's grid (mode 1), 0-8.\n");
+    fprintf(f, "pack_extra = %d\n", t->packExtra);
+    fprintf(f, "\n[cars]\n");
+    fprintf(f, "; durability = every car's health as a %% of the Baja Buggy's (car 13), the race's bonus\n");
+    fprintf(f, ";   for difficulty and mode included (50 = half); 0 = each car its own, as the N64.\n");
+    fprintf(f, "; spark_car_hits = 1: sparks where two cars hit (the sparks off walls stay either way).\n");
+    fprintf(f, "durability = %d\n", t->durabilityPct);
+    fprintf(f, "; health_player / health_ai = the starting health on top of that, %% (the player / the computer cars).\n");
+    fprintf(f, "health_player = %d\n", t->healthPlayerPct);
+    fprintf(f, "health_ai = %d\n", t->healthAiPct);
+    fprintf(f, "; wall_wreck_mph: a wall or wreck hit that takes a car's last health wrecks it at once (the N64\n");
+    fprintf(f, ";   waited for another car's hit); 0 = any such hit, N = only head-on at N mph or more.\n");
+    fprintf(f, "wall_wreck_mph = %d\n", t->wallWreckMph);
+    fprintf(f, "spark_car_hits = %d\n", t->sparksCarHits);
+    fprintf(f, "; perf_floor = 1: no car accelerates or tops out below the best: the quickest car's torque for\n");
+    fprintf(f, ";   its weight (car 18) and the fastest car's gearbox (car 19) are every car's minimum.\n");
+    fprintf(f, "; bars = the car-select speed and acceleration bars shown at this %% of the car's real value.\n");
+    fprintf(f, "perf_floor = %d\n", t->perfFloor);
+    fprintf(f, "bars = %d\n", t->barsPct);
+    fprintf(f, "; mass_car1 = car 1's (the white \"2\") weight, %% of its own (springs and engine scaled with it).\n");
+    fprintf(f, "; player_yaw = how hard the player's car is to spin in a crash, %% of the car's own (yaw inertia).\n");
+    fprintf(f, "mass_car1 = %d\n", t->massCar1Pct);
+    fprintf(f, "player_yaw = %d\n", t->playerYawPct);
+    fprintf(f, "; wreck_near = a computer car can wreck only within this many metres of you (100 = half the\n");
+    fprintf(f, ";   200 m inside which cars are fully simulated); 0 = only from your own hits.\n");
+    fprintf(f, "wreck_near = %d\n", t->wreckNear);
+    fprintf(f, "\n[speedfx]\n");
+    fprintf(f, "; enabled = 1: the chase camera widens its view with speed (fov_pct %% wider at the top speed),\n");
+    fprintf(f, ";   hangs back as you accelerate and closes in as you brake, sits lower when fast, and shakes a\n");
+    fprintf(f, ";   little near the top speed (shake_pct %%; more off the tarmac, a kick on a crash).\n");
+    fprintf(f, "enabled = %d\n", t->speedFx);
+    fprintf(f, "fov_pct = %d\n", t->speedFovPct);
+    fprintf(f, "shake_pct = %d\n", t->speedShakePct);
+    fprintf(f, "; lines = 1: faint streaks rushing out at the screen's sides above 60%% of the top speed.\n");
+    fprintf(f, "; wind = the wind's loudness at speed, %% (0 = off).\n");
+    fprintf(f, "lines = %d\n", t->speedLines);
+    fprintf(f, "wind = %d\n", t->speedWindPct);
     fprintf(f, "\n[hud]\n");
     fprintf(f, "; Widescreen HUD (16:9 and wider). Each group's top-left in pixels of a 1280x720 screen\n");
     fprintf(f, "; (template: docs/HUD_LAYOUT.md); -1 -1 = where the N64 had it. score and map keep to the\n");
@@ -247,6 +310,44 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
         }
         return;
     }
+    if (SDL_strcasecmp(section, "speedfx") == 0) {
+        if (SDL_strcasecmp(key, "enabled") == 0) {
+            t->speedFx = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "fov_pct") == 0) {
+            t->speedFovPct = clampi(atoi(val), 0, 60);
+        } else if (SDL_strcasecmp(key, "shake_pct") == 0) {
+            t->speedShakePct = clampi(atoi(val), 0, 300);
+        } else if (SDL_strcasecmp(key, "lines") == 0) {
+            t->speedLines = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "wind") == 0) {
+            t->speedWindPct = clampi(atoi(val), 0, 300);
+        }
+        return;
+    }
+    if (SDL_strcasecmp(section, "cars") == 0) {
+        if (SDL_strcasecmp(key, "durability") == 0) {
+            t->durabilityPct = clampi(atoi(val), 0, 300);
+        } else if (SDL_strcasecmp(key, "spark_car_hits") == 0) {
+            t->sparksCarHits = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "perf_floor") == 0) {
+            t->perfFloor = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "bars") == 0) {
+            t->barsPct = clampi(atoi(val), 10, 100);
+        } else if (SDL_strcasecmp(key, "mass_car1") == 0) {
+            t->massCar1Pct = clampi(atoi(val), 50, 220);
+        } else if (SDL_strcasecmp(key, "health_player") == 0) {
+            t->healthPlayerPct = clampi(atoi(val), 25, 400);
+        } else if (SDL_strcasecmp(key, "wall_wreck_mph") == 0) {
+            t->wallWreckMph = clampi(atoi(val), 0, 300);
+        } else if (SDL_strcasecmp(key, "health_ai") == 0) {
+            t->healthAiPct = clampi(atoi(val), 25, 400);
+        } else if (SDL_strcasecmp(key, "wreck_near") == 0) {
+            t->wreckNear = clampi(atoi(val), 0, 1000);
+        } else if (SDL_strcasecmp(key, "player_yaw") == 0) {
+            t->playerYawPct = clampi(atoi(val), 50, 500);
+        }
+        return;
+    }
     if (SDL_strcasecmp(section, "ai") == 0) {
         if (SDL_strcasecmp(key, "mode") == 0) {
             t->aiMode = clampi(atoi(val), 0, WM_AI_MODES - 1);
@@ -254,6 +355,14 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->aiDirector = atoi(val) != 0;
         } else if (SDL_strcasecmp(key, "fix_bugs") == 0) {
             t->aiFixBugs = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "record_line") == 0) {
+            t->recordLine = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "racing_line") == 0) {
+            t->racingLine = atoi(val) != 0;
+        } else if (SDL_strcasecmp(key, "line_pct") == 0) {
+            t->linePct = clampi(atoi(val), 50, 200);
+        } else if (SDL_strcasecmp(key, "pack_extra") == 0) {
+            t->packExtra = clampi(atoi(val), 0, 8);
         }
         return;
     }
@@ -416,6 +525,18 @@ void WM_ReloadTuning(void) {
         if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
         }
+        if (sTuning.tuningVersion == 18) {
+            sTuning.wallWreckMph = 0; /* any lethal hit, not any 100 mph one */
+        }
+        if (sTuning.tuningVersion <= 17) {
+            sTuning.racingLine = 0; /* the recorded line withdrawn */
+        }
+        if (sTuning.tuningVersion <= 15) {
+            sTuning.scoreFxEnabled = 0; /* the score's animation off for now */
+        }
+        if (sTuning.tuningVersion == 13) {
+            sTuning.massCar1Pct = 100; /* car 1's extra weight withdrawn */
+        }
         if (sTuning.tuningVersion == 7) {
             /* v7 was a test build's layout: the new defaults */
             memcpy(sTuning.hudPos, kHudDefaults, sizeof(sTuning.hudPos));
@@ -489,6 +610,74 @@ int WM_AiMode(void) {
 
 int WM_AiDirectorOn(void) {
     return WM_Enabled() && sTuning.aiDirector;
+}
+
+int WM_DurabilityPct(void) {
+    return WM_Enabled() ? sTuning.durabilityPct : 0;
+}
+
+int WM_MassCar1Pct(void) {
+    return WM_Enabled() ? sTuning.massCar1Pct : 100;
+}
+
+int WM_PlayerYawPct(void) {
+    return WM_Enabled() ? sTuning.playerYawPct : 100;
+}
+
+int WM_LineRecording(void) {
+    /* DD64_RECLINE=1 (testing) records whatever the ini says */
+    return WM_Enabled() && (sTuning.recordLine || SDL_getenv("DD64_RECLINE") != NULL);
+}
+
+int WM_RacingLine(void) {
+    return WM_Enabled() && sTuning.racingLine;
+}
+
+int WM_SpeedFx(void) {
+    return WM_Enabled() && sTuning.speedFx;
+}
+
+int WM_SpeedFovPct(void) {
+    return sTuning.speedFovPct;
+}
+
+int WM_SpeedShakePct(void) {
+    return sTuning.speedShakePct;
+}
+
+int WM_WallWreckMph(void) {
+    return WM_Enabled() ? sTuning.wallWreckMph : 0;
+}
+
+int WM_HealthPct(int human) {
+    if (!WM_Enabled()) {
+        return 100;
+    }
+    return human ? sTuning.healthPlayerPct : sTuning.healthAiPct;
+}
+
+int WM_WreckNear(void) {
+    return sTuning.wreckNear;
+}
+
+int WM_PackExtra(void) {
+    return WM_Enabled() ? sTuning.packExtra : 0;
+}
+
+int WM_LinePct(void) {
+    return sTuning.linePct;
+}
+
+int WM_PerfFloor(void) {
+    return WM_Enabled() && sTuning.perfFloor;
+}
+
+int WM_BarsPct(void) {
+    return WM_Enabled() ? sTuning.barsPct : 100;
+}
+
+int WM_SparksCarHits(void) {
+    return WM_Enabled() && sTuning.sparksCarHits;
 }
 
 int WM_AiFixBugs(void) {

@@ -178,6 +178,13 @@ Car *Car_Create(CarStats *s) {
 #ifdef TARGET_PC
     WM_DumpCarRecords(); /* DD64_DUMPCARS (testing) */
 #endif
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal ([cars] perf_floor): the best engine and gearbox as the minimum */
+        void WM_CarApplyFloor(void *stats);
+        WM_CarApplyFloor(s);
+    }
+#endif
     car = Mem_Alloc(0xEA0);
     if (car == NULL) {
         return NULL;
@@ -297,6 +304,12 @@ Car *Car_Create(CarStats *s) {
         s->xB8 = 1.2f;
     }
     RigidBody_Init(car->x1EC, &s->x78);
+#ifdef TARGET_PC
+    {
+        void WM_PlayerStability(void *car); /* [cars] player_yaw (wm_cars.c) */
+        WM_PlayerStability(car);
+    }
+#endif
     if (D_800958A4[1] == 2) {
         car->x8C = 0;
     } else {
@@ -410,6 +423,32 @@ Car *Car_Create(CarStats *s) {
             car->x10 += e;
         }
     }
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal ([cars] durability): every car's health a share of the Baja Buggy's
+           (car type 12, its record's health), with this race's own bonus (above) */
+        int WM_DurabilityPct(void);
+        const u32 *WM_CarRecord(int id);
+        int pct = WM_DurabilityPct();
+        int WM_CarStatsSane(const void *);
+        const u32 *baja = pct > 0 ? WM_CarRecord(12) : NULL;
+        if (baja != NULL && WM_CarStatsSane(baja) && WM_CarStatsSane(s)) { /* only on sane records */
+            int WM_HealthPct(int human);
+            car->x10 = ((s32)baja[2] + (car->x10 - s->x8)) * pct / 100;
+            /* [cars] health_player / health_ai: a little more for every car, the computer cars most */
+            car->x10 = car->x10 * WM_HealthPct(car->x30 == 0) / 100;
+            if (car->x10 < 1) {
+                car->x10 = 1;
+            }
+        }
+    }
+#endif
+#ifdef TARGET_PC
+    {
+        void WM_AiPackCar(void *car); /* the pack race's computer cars (ai_director.c) */
+        WM_AiPackCar(car);
+    }
+#endif
     car->x58 = 0;
     car->x5C = 0;
     car->xA64 = 0;

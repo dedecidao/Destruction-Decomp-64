@@ -13,6 +13,10 @@ s32 rand(void);
 void func_800172D0(void *, Vec3f, Vec3f, f32, f32, s32);
 void func_80016F48(void *, Vec3f, Vec3f, f32, f32, s32);
 
+#ifdef TARGET_PC
+f32 WM_WreckFire(void *car, s32 *n); /* port/game/wm_cars.c */
+#endif
+
 void Car_EmitWreckParticles(Obj *arg0, Vec3f pos, f32 *m) {
     s32 t = 0x13 - D_800D31CC * 3;
     Vec3f colA = D_800B80F0;
@@ -34,6 +38,19 @@ void Car_EmitWreckParticles(Obj *arg0, Vec3f pos, f32 *m) {
         p.y = pos.y - m[1] * r1 - m[9] * r2 + D_800B8108;
         p.z = pos.z - m[2] * r1 - m[10] * r2;
     }
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal: the blast, then the car on fire for 50 seconds (wm_mod.c), then
+           the N64's smoke */
+        int WM_WreckFx(void *car, f32 px, f32 py, f32 pz, f32 *m, s32 n);
+        if (WM_WreckFx(arg0, pos.x, pos.y, pos.z, m, n)) {
+            return;
+        }
+        if (WM_WreckFire(arg0, &n) > 0.0f) { /* (sets n past the N64's flames once burnt out) */
+            return;
+        }
+    }
+#endif
     if (n < 20) {
         func_800172D0(D_801245A4 + 0x148, p, colA, 34.0f, 1.2f, t);
     } else if (n < 110) {

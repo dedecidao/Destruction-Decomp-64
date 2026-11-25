@@ -2,6 +2,7 @@
 #include "m2c.h"
 #ifdef TARGET_PC
 void WM_EmitSparks(void *, void *, float, float, float, float, void *);
+int WM_SparksCarHits(void); /* [cars] spark_car_hits */
 #endif
 
 typedef struct { f32 x, y, z; } Vec3f;
@@ -161,7 +162,9 @@ void Car_OnCollision2(Coll *a, Vec3f posA, Coll *b, Vec3f posB, f32 force)
                 Debris_Spawn(carA, posA, hpA - carA->x10);
                 Debris_Spawn(carB, posB, hpB - carB->x10);
 #ifdef TARGET_PC
-                WM_EmitSparks(D_801245A4 + 0xC, carA, posA.x, posA.y, posA.z, force, carB); /* metal on metal */
+                if (WM_SparksCarHits()) {
+                    WM_EmitSparks(D_801245A4 + 0xC, carA, posA.x, posA.y, posA.z, force, carB); /* metal on metal */
+                }
 #endif
                 flag = 0;
             } else {
