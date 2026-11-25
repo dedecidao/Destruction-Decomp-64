@@ -116,7 +116,7 @@ static void wmPlaceOnSeg(Track *track, Car *car, s32 seg, s32 sign, f32 f) {
 }
 
 /* Wrecked Metal's starts ([ai] mode, port/game/ai_director.c). The pack race: every car on
-   one grid behind the start line `start`, the player in the front row, two abreast, rows
+   one grid behind the start line `start`, the player in the last row, two abreast, rows
    three segments apart, all driving `sign` (the player's way). Head-on: the player and
    the even computer cars on that grid; the odd ones spread over the far half of the lap
    (35% to 75% of it ahead), driving the other way, at the player. */
@@ -129,9 +129,13 @@ static void wmPlaceField(Track *track, s32 start, s32 sign, s32 mode) {
     for (i = 1; i < n; i++) {
         nrev += mode == 2 && (i & 1);
     }
-    for (i = 0; i < n; i++) {
-        Car *car = track->cars[i];
-        if (mode == 2 && (i & 1)) {
+    /* the player (car 0) starts last: the computer cars first, the player after them */
+    for (i = 1; i <= n; i++) {
+        Car *car = track->cars[i == n ? 0 : i];
+        if (i == n && n == 0) {
+            break;
+        }
+        if (i < n && mode == 2 && (i & 1)) {
             /* coming the other way: evenly over 35%-75% of the lap ahead, alternating sides */
             s32 seg = start + sign * (s32)(ns * 0.35f + (nrev > 1 ? ns * 0.40f * r / (nrev - 1) : ns * 0.20f));
             wmPlaceOnSeg(track, car, seg, -sign, (r & 1) ? 0.3f : 0.7f);
