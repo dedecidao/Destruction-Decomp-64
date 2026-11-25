@@ -406,3 +406,54 @@ void WM_PlayerStability(void *car) {
     *(f32 *)(b + 0x18) *= k;
     *(f32 *)(b + 0x24) /= k;
 }
+
+/* ---- Wrecked Metal: a head-on crash at speed wrecks the car ([cars] wall_wreck_mph) ---- */
+
+/* each car's speed on its last physics frame (the hit has already slowed it by the time
+   the damage is dealt) */
+#define SPEED_SLOTS 128
+static void *sSpeedCar[SPEED_SLOTS];
+static f32 sSpeed[SPEED_SLOTS];
+
+static s32 speedSlot(void *car) {
+    u32 h = ((u32)(uintptr_t)car >> 4) * 2654435761u >> 25; /* 0-127 */
+    s32 i;
+    for (i = 0; i < SPEED_SLOTS; i++, h = (h + 1) & (SPEED_SLOTS - 1)) {
+        if (sSpeedCar[h] == car || sSpeedCar[h] == NULL) {
+            sSpeedCar[h] = car;
+            return (s32)h;
+        }
+    }
+    return (s32)(h & (SPEED_SLOTS - 1));
+}
+
+void WM_NoteSpeed(void *car) {
+    f32 Car_GetSpeed(void *);
+    f32 speed = Car_GetSpeed(car);
+    s32 s = speedSlot(car);
+    sSpeedCar[s] = car;
+    sSpeed[s] = speed;
+}
+
+/* Car_ApplyDamage (a wall, a wreck): a hit on the front (zone 0, or the front corners
+   1 and 4) at wall_wreck_mph or more wrecks the car there and then: no health left and
+   the wreck flag (Car+0xE, as a finishing blow sets it). A computer car only within
+   wreck_near of the player. Returns 1 when it did. */
+s32 WM_HeadOnWreck(void *car, s32 zone) {
+    f32 mph;
+    s32 lim = WM_WallWreckMph();
+    if (lim <= 0 || car == NULL || (zone != 0 && zone != 1 && zone != 4) || ((u8 *)car)[0xBE0]) { /* (0xBE0: no damage) */
+        return 0;
+    }
+    mph = sSpeed[speedSlot(car)] * 2.2369f;
+    if (mph < (f32)lim) {
+        return 0;
+    }
+    if (*(s32 *)((u8 *)car + 0x30) != 0 && WM_AiKeepAlive(car, NULL)) {
+        return 0;
+    }
+    *(s32 *)((u8 *)car + 0x10) = 0;
+    ((u8 *)car)[0xE] = 1;
+    Port_Log("cars: head-on at %.0f mph, car %p (model %d) wrecked", (double)mph, car, *(s32 *)((u8 *)car + 0x34));
+    return 1;
+}

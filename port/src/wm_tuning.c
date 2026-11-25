@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 17 /* 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 18 /* 18: racing_line off, [cars] wall_wreck_mph; 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -110,11 +110,12 @@ static void setDefaults(WMTuning *t) {
     t->aiDirector = 1;
     t->aiFixBugs = 1;
     t->recordLine = 0;
-    t->racingLine = 1;
+    t->racingLine = 0; /* (Andre: the recorded line confused them off it; v18) */
     t->linePct = 105;
     t->packExtra = 4;
     t->wreckNear = 100;
     t->healthPlayerPct = 115;
+    t->wallWreckMph = 100;
     t->healthAiPct = 120;
 
     t->durabilityPct = 50;
@@ -231,6 +232,9 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; health_player / health_ai = the starting health on top of that, %% (the player / the computer cars).\n");
     fprintf(f, "health_player = %d\n", t->healthPlayerPct);
     fprintf(f, "health_ai = %d\n", t->healthAiPct);
+    fprintf(f, "; wall_wreck_mph = a head-on hit at this speed or more wrecks the car at once (computer cars\n");
+    fprintf(f, ";   only within wreck_near of you); 0 = off.\n");
+    fprintf(f, "wall_wreck_mph = %d\n", t->wallWreckMph);
     fprintf(f, "spark_car_hits = %d\n", t->sparksCarHits);
     fprintf(f, "; perf_floor = 1: no car accelerates or tops out below the best: the quickest car's torque for\n");
     fprintf(f, ";   its weight (car 18) and the fastest car's gearbox (car 19) are every car's minimum.\n");
@@ -303,6 +307,8 @@ static void applyKey(WMTuning *t, const char *section, const char *key, const ch
             t->massCar1Pct = clampi(atoi(val), 50, 220);
         } else if (SDL_strcasecmp(key, "health_player") == 0) {
             t->healthPlayerPct = clampi(atoi(val), 25, 400);
+        } else if (SDL_strcasecmp(key, "wall_wreck_mph") == 0) {
+            t->wallWreckMph = clampi(atoi(val), 0, 300);
         } else if (SDL_strcasecmp(key, "health_ai") == 0) {
             t->healthAiPct = clampi(atoi(val), 25, 400);
         } else if (SDL_strcasecmp(key, "wreck_near") == 0) {
@@ -489,6 +495,9 @@ void WM_ReloadTuning(void) {
         if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
         }
+        if (sTuning.tuningVersion <= 17) {
+            sTuning.racingLine = 0; /* the recorded line withdrawn */
+        }
         if (sTuning.tuningVersion <= 15) {
             sTuning.scoreFxEnabled = 0; /* the score's animation off for now */
         }
@@ -589,6 +598,10 @@ int WM_LineRecording(void) {
 
 int WM_RacingLine(void) {
     return WM_Enabled() && sTuning.racingLine;
+}
+
+int WM_WallWreckMph(void) {
+    return WM_Enabled() ? sTuning.wallWreckMph : 0;
 }
 
 int WM_HealthPct(int human) {
