@@ -57,6 +57,7 @@ typedef struct {
     f32 speed, throttle;
     s32 tenacity, search; /* the driver's own, while the director has raised them */
     u8 raised, personal, behind, god, rolled;
+    s32 lastProg, laps;  /* the race distance: laps counted at each pass of the line */
 } WMDirCar;
 
 static WMDirCar sCars[RACE_CARS];
@@ -171,6 +172,8 @@ static void update(void) {
             sCars[i].car = RACE_CAR(race, i);
             sCars[i].speed = sCars[i].throttle = 1.0f;
             sCars[i].raised = sCars[i].personal = 0;
+            sCars[i].laps = 0;
+            sCars[i].lastProg = -1;
             if (sCars[i].car == NULL) {
                 continue;
             }
@@ -194,6 +197,22 @@ static void update(void) {
     }
     pdir = CAR_S32(player, 0x58);
     pprog = progress(player, ns);
+    for (i = 0; i < n; i++) {
+        WMDirCar *d = &sCars[i];
+        s32 pg;
+        if (d->car == NULL) {
+            continue;
+        }
+        pg = progress(d->car, ns);
+        if (d->lastProg >= 0) {
+            if (pg - d->lastProg < -ns / 2) {
+                d->laps++;
+            } else if (pg - d->lastProg > ns / 2) {
+                d->laps--;
+            }
+        }
+        d->lastProg = pg;
+    }
     base = kBase[D_800958B0 & 3];
     if (sMode == WM_AI_PACK_RACE) {
         static const f32 kPack[4] = { 1.04f, 1.08f, 1.12f, 1.16f }; /* the pack race: a harder field */
@@ -346,6 +365,15 @@ f32 WM_AiSpeedScale(void *car) {
     if (WM_AiMode() == WM_AI_PACK_RACE) {
         pace /= PACK_GEAR;
     }
+    {
+        static int slow = -1;
+        if (slow < 0) {
+            slow = getenv("DD64_AISLOW") != NULL; /* testing: the computer cars crawl */
+        }
+        if (slow) {
+            pace = 0.25f;
+        }
+    }
     if (!active()) {
         return pace;
     }
@@ -377,6 +405,21 @@ void WM_AiLog(void) {
         return;
     }
     ns = RACE_NSEGS(race);
+    {
+        /* the player's place in the standings (race+0x14) and the track-order list (+0x20) */
+        s8 Race_GetPlayerPosition(void);
+        u8 **node = *(u8 ***)(race + 0x14);
+        s32 k = 1, at = -1;
+        while (node != NULL && k <= sCount) {
+            if (node[0] != NULL && CAR_S32(node[0], 0x30) == 0) {
+                at = k;
+                break;
+            }
+            node = (u8 **)node[1];
+            k++;
+        }
+        Port_Log("ailog: place standings %d, Race_GetPlayerPosition %d", (int)at, (int)Race_GetPlayerPosition());
+    }
     for (i = 0; i < sCount; i++) {
         void *c = sCars[i].car;
         if (c == NULL) {
@@ -406,6 +449,9 @@ void WM_AiTurbo(void *car) {
     f32 v, k = 1.006f;
     s32 i;
     if (sMode != WM_AI_PACK_RACE || !active() || (d = find(car)) == NULL || !d->behind) {
+        return;
+    }
+    if (getenv("DD64_AISLOW") != NULL) {
         return;
     }
     v = Car_GetSpeed(car);
@@ -454,4 +500,33 @@ s32 WM_PackExtraCars(void) {
         return 0;
     }
     return WM_PackExtra();
+}
+
+/* The pack race's standings by the track: laps (counted here, the game's own counter
+   does not follow race tracks), then how far round. 1 when `a` is ahead of or level
+   with `b` (Car_CompareScore's sense). Standings_Resort uses it in the pack race. */
+static s32 raceDistance(void *car) {
+    u8 *race = RACE(gGame);
+    WMDirCar *d = find(car);
+    s32 ns = race != NULL ? RACE_NSEGS(race) : 0;
+    if (ns <= 0) {
+        return 0;
+    }
+    if (d == NULL) {
+        return progress(car, ns);
+    }
+    return d->laps * ns + (d->lastProg >= 0 ? d->lastProg : progress(car, ns));
+}
+
+s32 WM_CompareTrackPos(void *a, void *b) {
+    if (CAR_S32(a, 0x30) != 0 && CAR_S32(b, 0x30) != 0) {
+        /* (two computer cars: the same, but cheaper to keep stable) */
+    }
+    return raceDistance(a) >= raceDistance(b);
+}
+
+/* Whether the standings follow the track (the pack race, director on: it counts laps) */
+int WM_PackStandings(void) {
+    return gGame != NULL && RACE(gGame) != NULL && *(s32 *)(RACE(gGame) + 0x10) == 0 && active() &&
+           sMode == WM_AI_PACK_RACE;
 }

@@ -88,6 +88,17 @@ void Standings_Resort(List *list, Car *car) {
     s32 j;
     u8 moved = 0;
 
+#ifdef TARGET_PC
+    {
+        /* Wrecked Metal's pack race: places by the track (laps, then how far round), not by
+           the score (port/game/ai_director.c) */
+        int WM_PackStandings(void);
+        s32 WM_CompareTrackPos(void *, void *);
+        if (WM_PackStandings()) {
+            list->cmp = (u8 (*)(Car *, Car *))WM_CompareTrackPos;
+        }
+    }
+#endif
     n = list->head;
     for (i = 0; i < gGame[0]->x1100->xA4; i++) {
         if (SAMECAR(n->car, car)) {
