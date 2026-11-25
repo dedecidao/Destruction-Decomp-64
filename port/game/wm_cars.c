@@ -263,7 +263,20 @@ void WM_CarApplyFloor(void *stats) {
     s32 q, f, o;
     const u32 *rq, *rf;
     f32 mass;
-    if (!WM_PerfFloor() || stats == NULL) {
+    if (stats == NULL || !WM_Enabled()) {
+        return;
+    }
+    /* [cars] mass_car1: car 1 (model 0, the white "2") heavier, its springs with it */
+    if (((const u32 *)stats)[1] == 0 && WM_MassCar1Pct() != 100 && WM_CarStatsSane(stats)) {
+        static void *done;
+        if (done != stats) { /* (a record is set up once a car; never scale it twice) */
+            f32 k = WM_MassCar1Pct() / 100.0f;
+            ST_F(stats, 0x78) *= k;
+            ST_F(stats, 0xB0) *= k;
+            done = stats;
+        }
+    }
+    if (!WM_PerfFloor()) {
         return;
     }
     bestCars(&q, &f);
@@ -323,4 +336,44 @@ s32 WM_CarBar(s32 bar, s32 value) {
         }
     }
     return value;
+}
+
+/* How much faster a car's top gear is than its own record's (the floor's gearbox): the
+   computer cars' track speed limits scale with it, so they keep their pace against the
+   faster field (Ai_Steer, CarAI_SteerToTarget through WM_AiSpeedScale). 1 without it. */
+f32 WM_CarPaceScale(void *car) {
+    const u32 *r;
+    const u8 *st;
+    f32 orig, cur;
+    s32 model;
+    if (!WM_PerfFloor() || car == NULL) {
+        return 1.0f;
+    }
+    model = *(s32 *)((u8 *)car + 0x34);
+    r = WM_CarRecord(model);
+    if (r == NULL || !WM_CarStatsSane(r)) {
+        return 1.0f;
+    }
+    st = (const u8 *)car + 0xBEC; /* the car's own copy of its stats */
+    orig = ST_F(r, 0x54) * ST_F(r, 0x58);
+    cur = ST_F(st, 0x54) * ST_F(st, 0x58);
+    if (cur < 0.1f || orig < cur) {
+        return 1.0f;
+    }
+    orig /= cur;
+    return orig > 1.5f ? 1.5f : orig;
+}
+
+/* The player's car harder to spin ([cars] player_yaw): its yaw inertia (the body's
+   inertia about y, Car+0x1EC+0x18, and its inverse +0x24) scaled after RigidBody_Init */
+void WM_PlayerStability(void *car) {
+    u8 *b;
+    f32 k;
+    if (car == NULL || *(s32 *)((u8 *)car + 0x30) != 0 || WM_PlayerYawPct() == 100) {
+        return;
+    }
+    b = (u8 *)car + 0x1EC;
+    k = WM_PlayerYawPct() / 100.0f;
+    *(f32 *)(b + 0x18) *= k;
+    *(f32 *)(b + 0x24) /= k;
 }

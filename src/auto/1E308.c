@@ -304,6 +304,12 @@ Car *Car_Create(CarStats *s) {
         s->xB8 = 1.2f;
     }
     RigidBody_Init(car->x1EC, &s->x78);
+#ifdef TARGET_PC
+    {
+        void WM_PlayerStability(void *car); /* [cars] player_yaw (wm_cars.c) */
+        WM_PlayerStability(car);
+    }
+#endif
     if (D_800958A4[1] == 2) {
         car->x8C = 0;
     } else {

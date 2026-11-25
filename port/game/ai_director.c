@@ -7,10 +7,12 @@
  *   - further back, a car going the player's way is allowed past the track's speed limits,
  *     up to +15% while it is driven by physics and +30% (+35% pack) once it is far enough
  *     to be moved along the track (the kinematic mode, Car+0xBAC);
- *   - further ahead, a leader's limits and engine ease off, to 85% and 80%;
+ *   - further ahead, a leader's limits and engine ease off a little, to 94% and 92%;
  *   - cars coming the other way (head-on) keep a steady 105%, and close to the player
  *     their driver turns to its most tenacious and searching;
- *   - the difficulty (D_800958B0) sets a base pace: 0.94, 1.00, 1.05, 1.10.
+ *   - the difficulty (D_800958B0) sets a base pace: 0.98, 1.02, 1.06, 1.10;
+ *   - with [cars] perf_floor every computer car's limits rise with its faster gearbox
+ *     (WM_CarPaceScale), in every mode, the classic one too.
  *
  * Ai_Steer (5B14.c) and CarAI_SteerToTarget (36FC4.c) scale the node's speed limit by
  * WM_AiSpeedScale, Port_CarDrive (pedals.c) the engine by WM_AiThrottleScale. The state
@@ -135,7 +137,7 @@ static void personalize(void *car, s32 i) {
 }
 
 static void update(void) {
-    static const f32 kBase[4] = { 0.94f, 1.00f, 1.05f, 1.10f };
+    static const f32 kBase[4] = { 0.98f, 1.02f, 1.06f, 1.10f };
     u8 *race = RACE(gGame);
     s32 n, ns, i, pdir, pprog;
     void *player = NULL;
@@ -231,9 +233,9 @@ static void update(void) {
                 f32 most = ((u8 *)c)[0xBAC] ? (sMode == WM_AI_PACK_RACE ? 0.35f : 0.30f) : 0.15f;
                 speed = 1.0f + t * most;
             } else {
-                /* ahead: ease off */
-                speed = 1.0f - t * 0.15f;
-                throttle = 1.0f - t * 0.20f;
+                /* ahead: ease off, gently (a leader must stay hard to catch) */
+                speed = 1.0f - t * 0.06f;
+                throttle = 1.0f - t * 0.08f;
             }
         }
         speed *= base;
@@ -265,14 +267,18 @@ static void tick(void) {
     }
 }
 
+f32 WM_CarPaceScale(void *car);
+
 f32 WM_AiSpeedScale(void *car) {
     WMDirCar *d;
+    /* the floor's faster gearbox raises the track's limits for this car alike, in every mode */
+    f32 pace = WM_CarPaceScale(car);
     if (!active()) {
-        return 1.0f;
+        return pace;
     }
     tick();
     d = find(car);
-    return d != NULL ? d->speed : 1.0f;
+    return d != NULL ? d->speed * pace : pace;
 }
 
 float WM_AiThrottleScale(void *car) {

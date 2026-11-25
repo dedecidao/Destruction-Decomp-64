@@ -67,6 +67,8 @@ typedef struct {
     int sparksCarHits;          /* sparks where two cars hit (the wall sparks stay) */
     int perfFloor;              /* the quickest car's engine and the fastest car's gearbox as every car's minimum */
     int barsPct;                /* the car-select speed and acceleration bars shown at this % */
+    int massCar1Pct;            /* car 1's (the white "2") mass, % of its own */
+    int playerYawPct;           /* the player's resistance to being spun (yaw inertia), % */
 } WMTuning;
 
 /* How the race tracks' computer cars start and drive ([ai] mode) */
@@ -128,6 +130,8 @@ int WM_DurabilityPct(void);
 int WM_SparksCarHits(void);
 int WM_PerfFloor(void);
 int WM_BarsPct(void);
+int WM_MassCar1Pct(void);
+int WM_PlayerYawPct(void);
 int WM_SkidShouldUpdate(void *skidMgr);
 int WM_SkidShouldDraw(void *skidMgr);
 int WM_SkidClipLife(void);
