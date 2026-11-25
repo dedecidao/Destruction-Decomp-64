@@ -117,18 +117,18 @@ void Car_ApplyDamage(Car *c, s32 idx, f32 dmg, s32 type) {
     if (c->parts[idx].x8 < 0) c->parts[idx].x8 = 0;
 #ifdef TARGET_PC
     {
-        /* Wrecked Metal: a head-on crash at speed wrecks the car at once (wm_cars.c) */
-        s32 WM_HeadOnWreck(void *car, s32 zone);
-        if (WM_HeadOnWreck(c, idx)) {
-            return;
-        }
-    }
-    {
         /* Wrecked Metal: this damage (a wall, a wreck) has no player behind it, so a
            computer car is left on 1 (port/game/wm_cars.c) */
         s32 WM_AiKeepAlive(void *victim, void *attacker);
         if (c->x10 <= 0 && WM_AiKeepAlive(c, NULL)) {
             c->x10 = 1;
+        }
+    }
+    {
+        /* Wrecked Metal: a hit that takes the last health wrecks the car at once (wm_cars.c) */
+        s32 WM_HeadOnWreck(void *car, s32 zone);
+        if (WM_HeadOnWreck(c, idx)) {
+            return;
         }
     }
 #endif

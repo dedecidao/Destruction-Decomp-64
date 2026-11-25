@@ -14,7 +14,7 @@
 static WMTuning sTuning;
 static int sInitialized;
 
-#define WM_TUNING_VERSION 18 /* 18: racing_line off, [cars] wall_wreck_mph; 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
+#define WM_TUNING_VERSION 19 /* 19: wall_wreck_mph 0 (any lethal hit); 18: racing_line off, [cars] wall_wreck_mph; 17: [cars] health_player 115, health_ai 120; 16: [cars] wreck_near, score_fx off; 15: [ai] pack_extra; 14: [ai] lines, mass_car1 back to 100; 13: [cars] mass_car1, player_yaw; 12: [cars] perf_floor, bars; 11: [cars]; 10: [ai]; 9: [lights], the car lights on every track; earlier: 7: [hud] widescreen layout and smaller start lights; 8: group sizes */
 
 /* [hud]: each group's top-left on a 1280x720 (16:9) screen; wider screens keep the left
    groups at the left edge and the right ones at the right edge (docs/HUD_LAYOUT.md) */
@@ -115,7 +115,7 @@ static void setDefaults(WMTuning *t) {
     t->packExtra = 4;
     t->wreckNear = 100;
     t->healthPlayerPct = 115;
-    t->wallWreckMph = 100;
+    t->wallWreckMph = 0;
     t->healthAiPct = 120;
 
     t->durabilityPct = 50;
@@ -232,8 +232,8 @@ static void writeDefaultIni(const char *path, const WMTuning *t) {
     fprintf(f, "; health_player / health_ai = the starting health on top of that, %% (the player / the computer cars).\n");
     fprintf(f, "health_player = %d\n", t->healthPlayerPct);
     fprintf(f, "health_ai = %d\n", t->healthAiPct);
-    fprintf(f, "; wall_wreck_mph = a head-on hit at this speed or more wrecks the car at once (computer cars\n");
-    fprintf(f, ";   only within wreck_near of you); 0 = off.\n");
+    fprintf(f, "; wall_wreck_mph: a wall or wreck hit that takes a car's last health wrecks it at once (the N64\n");
+    fprintf(f, ";   waited for another car's hit); 0 = any such hit, N = only head-on at N mph or more.\n");
     fprintf(f, "wall_wreck_mph = %d\n", t->wallWreckMph);
     fprintf(f, "spark_car_hits = %d\n", t->sparksCarHits);
     fprintf(f, "; perf_floor = 1: no car accelerates or tops out below the best: the quickest car's torque for\n");
@@ -494,6 +494,9 @@ void WM_ReloadTuning(void) {
            new parallax snow staying on track 10 */
         if (sTuning.tuningVersion <= 3) {
             sTuning.weatherRandom = 0;
+        }
+        if (sTuning.tuningVersion == 18) {
+            sTuning.wallWreckMph = 0; /* any lethal hit, not any 100 mph one */
         }
         if (sTuning.tuningVersion <= 17) {
             sTuning.racingLine = 0; /* the recorded line withdrawn */

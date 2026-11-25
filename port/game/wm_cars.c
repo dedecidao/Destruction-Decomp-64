@@ -435,18 +435,20 @@ void WM_NoteSpeed(void *car) {
     sSpeed[s] = speed;
 }
 
-/* Car_ApplyDamage (a wall, a wreck): a hit on the front (zone 0, or the front corners
-   1 and 4) at wall_wreck_mph or more wrecks the car there and then: no health left and
-   the wreck flag (Car+0xE, as a finishing blow sets it). A computer car only within
-   wreck_near of the player. Returns 1 when it did. */
+/* Car_ApplyDamage (a wall, a wreck): a hit that takes the car's last health wrecks it
+   there and then (the wreck flag Car+0xE, as a finishing blow sets it). The N64 left a
+   car at 0 driving on until another car hit it, so a wall could never finish anyone.
+   With [cars] wall_wreck_mph above 0, only a head-on hit (zone 0 or the front corners)
+   at that speed or more does. A computer car only within wreck_near of the player (the
+   others are kept on 1). Returns 1 when it did. */
 s32 WM_HeadOnWreck(void *car, s32 zone) {
     f32 mph;
     s32 lim = WM_WallWreckMph();
-    if (lim <= 0 || car == NULL || (zone != 0 && zone != 1 && zone != 4) || ((u8 *)car)[0xBE0]) { /* (0xBE0: no damage) */
-        return 0;
+    if (!WM_Enabled() || car == NULL || ((u8 *)car)[0xBE0] || *(s32 *)((u8 *)car + 0x10) > 0) {
+        return 0; /* (0xBE0: no damage; health left: nothing to finish) */
     }
     mph = sSpeed[speedSlot(car)] * 2.2369f;
-    if (mph < (f32)lim) {
+    if (lim > 0 && ((zone != 0 && zone != 1 && zone != 4) || mph < (f32)lim)) {
         return 0;
     }
     if (*(s32 *)((u8 *)car + 0x30) != 0 && WM_AiKeepAlive(car, NULL)) {
@@ -454,6 +456,7 @@ s32 WM_HeadOnWreck(void *car, s32 zone) {
     }
     *(s32 *)((u8 *)car + 0x10) = 0;
     ((u8 *)car)[0xE] = 1;
-    Port_Log("cars: head-on at %.0f mph, car %p (model %d) wrecked", (double)mph, car, *(s32 *)((u8 *)car + 0x34));
+    Port_Log("cars: lethal hit at %.0f mph (zone %d), car %p (model %d) wrecked", (double)mph, (int)zone, car,
+             *(s32 *)((u8 *)car + 0x34));
     return 1;
 }
