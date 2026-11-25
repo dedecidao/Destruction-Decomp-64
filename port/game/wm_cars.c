@@ -268,12 +268,13 @@ void WM_CarApplyFloor(void *stats) {
     }
     /* [cars] mass_car1: car 1 (model 0, the white "2") heavier, its springs with it */
     if (((const u32 *)stats)[1] == 0 && WM_MassCar1Pct() != 100 && WM_CarStatsSane(stats)) {
-        static void *done;
-        if (done != stats) { /* (a record is set up once a car; never scale it twice) */
+        const u32 *own = WM_CarRecord(0);
+        /* only a record still at its own weight: a race sets its cars up twice, from a
+           freshly loaded record each time, so the check (not the pointer) keeps it once */
+        if (own != NULL && ST_F(stats, 0x78) == ST_F(own, 0x78)) {
             f32 k = WM_MassCar1Pct() / 100.0f;
             ST_F(stats, 0x78) *= k;
             ST_F(stats, 0xB0) *= k;
-            done = stats;
         }
     }
     if (!WM_PerfFloor()) {
